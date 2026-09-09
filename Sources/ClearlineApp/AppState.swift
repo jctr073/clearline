@@ -23,8 +23,12 @@ final class AppState: ObservableObject {
     @Published var availableModels: [ModelCapability] = []
     @Published var modelStatus = "Connect OpenAI to load available models."
     @Published var hasKey = false
+    @Published var apiUsage = UsageLedger()
+    @Published var usageError: String?
+    @Published var usageLoaded = false
     @Published var crossAppMessage: String?
     let store: DocumentStore
+    let usageStore: UsageStore
     let spelling = NativeSpelling()
     let editor = EditorBridge()
     var crossApp: CrossAppController?
@@ -39,7 +43,8 @@ final class AppState: ObservableObject {
         let override = ProcessInfo.processInfo.environment["CLEARLINE_DATA_DIR"]
         let root = directory ?? override.map { URL(fileURLWithPath: $0) } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(Brand.name)
         store = DocumentStore(directory: root)
-        if autoload { Task { await load() } }
+        usageStore = UsageStore(directory: root)
+        if autoload { Task { await refreshUsage(); await load() } }
     }
     var current: WritingDocument? { library.documents.first { $0.id == library.selectedID } }
     var filteredDocuments: [WritingDocument] {

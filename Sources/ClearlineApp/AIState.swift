@@ -33,9 +33,9 @@ final class AISession: ObservableObject, Identifiable {
     }
     func changeModel(_ id: String) {
         model = id
-        guard let capability = ModelCapability.catalog.first(where: { $0.id == id }) else { return }
+        let capability = ModelCapability.capability(for: id)
         let normalized = capability.validatedEffort(effort)
-        if normalized != effort { selectionNotice = normalized.isEmpty ? "This model does not support adjustable reasoning." : "Reasoning changed to \(normalized), a supported setting for \(id)." }
+        if normalized != effort { selectionNotice = normalized.isEmpty ? capability.reasoningDescription : "Reasoning changed to \(normalized), a supported setting for \(id)." }
         effort = normalized
     }
     func cancel() { generation = UUID(); task?.cancel(); task = nil; running = false }
@@ -50,7 +50,7 @@ final class AISession: ObservableObject, Identifiable {
             let config = try RequestConfiguration(model: model, effort: effort, maxOutputTokens: state.preferences.maxOutputTokens, timeout: state.preferences.timeoutSeconds)
             let request = WritingRequest(action: capturedAction, text: original, instructions: instructions, previous: previous, preferences: state.preferences, configuration: config)
             let provider = try state.makeProvider()
-            effective = "\(config.model) · \(config.effort ?? "no adjustable reasoning") · OpenAI cloud"
+            effective = "\(config.model) · \(config.effort ?? "API-default reasoning") · OpenAI cloud"
             running = true
             task = Task {
                 do {
@@ -103,17 +103,20 @@ final class AISession: ObservableObject, Identifiable {
 extension AppState {
     func makeProvider() throws -> any WritingProvider {
         guard let key = try KeychainCredential.read() else { throw ProviderError.missingKey }
-        if preferences.useAgentService { return AgentProcessProvider(key: key) }
-        return OpenAIProvider(key: key)
+        let report: @Sendable (String, TokenUsage) async -> Void = { [weak self] model, usage in
+            await self?.recordUsage(model: model, usage: usage)
+        }
+        if preferences.useAgentService { return AgentProcessProvider(key: key, onUsage: report) }
+        return OpenAIProvider(key: key, onUsage: report)
     }
     func refreshModels() async {
         do {
             guard let key = try KeychainCredential.read() else { hasKey = false; availableModels = []; throw ProviderError.missingKey }
             hasKey = true; modelStatus = "Loading available models…"
             availableModels = try await OpenAIProvider(key: key).models()
-            modelStatus = availableModels.isEmpty ? "No verified text models are available to this account." : "\(availableModels.count) verified text models available."
+            modelStatus = availableModels.isEmpty ? "No models were returned for this account." : "\(availableModels.count) account models discovered. Writing compatibility varies."
             if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
-        } catch { modelStatus = error.localizedDescription }
+        } catch { availableModels = []; modelStatus = error.localizedDescription }
     }
     func startAI(_ action: WritingAction = .clarity, wholeDocument: Bool = false, paragraph: Bool = false) {
         guard let document = current else { return }

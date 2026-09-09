@@ -4,6 +4,7 @@ import ClearlineCore
 /// Optional SDK boundary: one child process per request, no listening port, no filesystem tools.
 struct AgentProcessProvider: WritingProvider {
     let key: String
+    var onUsage: @Sendable (String, TokenUsage) async -> Void = { _, _ in }
     func perform(_ request: WritingRequest, progress: @escaping @Sendable (Int) async -> Void) async throws -> WritingResult {
         let body = try OpenAIWire.body(request, stream: false)
         let payload: [String: Any] = ["api_key": key, "request": try JSONSerialization.jsonObject(with: body), "timeout": request.configuration.timeout]
@@ -20,6 +21,11 @@ struct AgentProcessProvider: WritingProvider {
         } onCancel: { runner.cancel() }
         try Task.checkCancellation()
         guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ProviderError.malformed }
+        for report in envelope["usage"] as? [[String: Any]] ?? [] {
+            if let usage = TokenUsage.parse(report["usage"]) {
+                await onUsage(report["model"] as? String ?? request.configuration.model, usage)
+            }
+        }
         if let error = envelope["error"] as? String {
             switch error { case "authentication": throw ProviderError.authentication; case "rate_limit": throw ProviderError.rateLimit; case "timeout": throw ProviderError.timeout; case "connection": throw ProviderError.offline; default: throw ProviderError.service("The local OpenAI Agents runtime failed. Verify its installation and the selected model. Source text was not changed.") }
         }

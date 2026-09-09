@@ -89,21 +89,23 @@ struct SettingsView: View {
             Section("Model defaults") {
                 Picker("Model", selection: Binding(get: { state.preferences.model }, set: { new in
                     state.preferences.model = new
-                    if let capability = ModelCapability.catalog.first(where: { $0.id == new }) {
+                    if let capability = state.availableModels.first(where: { $0.id == new }) {
                         let normalized = capability.validatedEffort(state.preferences.effort)
-                        if normalized != state.preferences.effort { message = normalized.isEmpty ? "Reasoning removed: this model has no adjustable reasoning." : "Reasoning set to \(normalized) for \(new)." }
+                        if normalized != state.preferences.effort { message = normalized.isEmpty ? capability.reasoningDescription : "Reasoning set to \(normalized) for \(new)." }
                         state.preferences.effort = normalized
                     }
                 })) {
-                    if !state.availableModels.contains(where: { $0.id == state.preferences.model }) { Text("\(state.preferences.model) · not verified for account").tag(state.preferences.model) }
-                    ForEach(state.availableModels) { Text($0.id).tag($0.id) }
+                    if !state.availableModels.contains(where: { $0.id == state.preferences.model }) { Text("\(state.preferences.model) · unavailable").tag(state.preferences.model) }
+                    ForEach(state.availableModels) { Text($0.displayName).tag($0.id) }
                 }
-                if let model = ModelCapability.catalog.first(where: { $0.id == state.preferences.model }), !model.efforts.isEmpty {
+                if let model = state.availableModels.first(where: { $0.id == state.preferences.model }), !model.efforts.isEmpty {
                     Picker("Reasoning effort", selection: $state.preferences.effort) { ForEach(model.efforts, id: \.self) { Text($0.capitalized).tag($0) } }
-                } else { Text("This model does not support adjustable reasoning effort.").font(.caption).foregroundStyle(.secondary) }
+                } else { Text(ModelCapability.capability(for: state.preferences.model).reasoningDescription).font(.caption).foregroundStyle(.secondary) }
                 Text("Higher reasoning effort may increase response time and cost. Each operation captures its settings when sent.").font(.caption).foregroundStyle(.secondary)
+                Text("Refresh checks your account directly. The list includes models for other uses; discovery does not verify writing support.").font(.caption).foregroundStyle(.secondary)
                 HStack { Text(state.modelStatus).font(.caption); Spacer(); Button("Refresh models") { Task { await state.refreshModels() } }.disabled(!state.hasKey) }
             }
+            UsageSettingsView(state: state)
             Section("Request limits") {
                 Stepper("Input limit: \(state.preferences.maxInputCharacters) characters", value: $state.preferences.maxInputCharacters, in: 2000...60000, step: 2000)
                 Stepper("Output limit: \(state.preferences.maxOutputTokens) tokens", value: $state.preferences.maxOutputTokens, in: 1024...16384, step: 1024)

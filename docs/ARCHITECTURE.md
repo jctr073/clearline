@@ -39,7 +39,7 @@ JSON was chosen over SwiftData for transparent backup/recovery and deterministic
 
 The Swift provider uses `/v1/responses`, strict `text.format` JSON Schema, `store: false`, and no external tools. Document text and the previous proposal are serialized as untrusted input fields separate from the operation instructions. The API never has a document-editing capability. The model outputs a proposal; the Swift client validates it and the user decides whether to apply it.
 
-The curated capability catalog is intersected with `/v1/models`. The Models endpoint does not declare a complete reasoning/operation capability matrix, so unknown IDs are intentionally excluded. Model capabilities are sourced from current official docs and must be reviewed when adding models. The request constructor independently rejects unsupported effort values. An immutable configuration snapshot prevents picker changes from changing an in-flight request. Model switching is never an error fallback.
+Model IDs are discovered directly from `/v1/models` without an allowlist or HTTP cache. The curated capability catalog only supplies known reasoning settings. Unknown IDs remain selectable, labeled unverified for writing, and omit reasoning in both providers. The Models endpoint does not declare endpoint, structured-output, or reasoning compatibility; discovery is not a capability test, and no generation probes run during refresh. A failed refresh clears the available list. The request constructor independently rejects unsupported effort values. An immutable configuration snapshot prevents picker changes from changing an in-flight request. Model switching is never an error fallback.
 
 The streaming parser ignores progress/tool-like events except text-progress counts and the completed response. It requires a completed, non-refused, bounded response and well-formed structured output. Invalid ranges or overlaps reject the entire analysis proposal. Cancellation and failure do not call the edit layer. Transient server/rate-limit retries are bounded at two, with capped backoff. Network errors are presented without echoing provider response bodies.
 
@@ -62,3 +62,10 @@ Minimum deployment target is macOS 14, selected for SwiftUI change handlers and 
 Direct Developer ID distribution is planned because Apple's sandbox guidance excludes assistive AX API usage. Current builds are ad-hoc signed local development apps. No private AX API, DOM injection, browser extension, generic backend, cloud document store, analytics SDK, or shared API secret is included.
 
 Remaining engineering work is tracked in FEATURES.md and COMPATIBILITY.md, including actual provider/host certification, continuous cross-app behavior, advanced format fidelity, larger-library scaling, comprehensive IME/dictation/VoiceOver checks, and release signing/notarization.
+
+
+### Local API usage
+
+`UsageStore` serializes token aggregation and atomically writes `api-usage.json` separately from documents. Native terminal-response metadata is recorded before proposal parsing, so a malformed or incomplete proposal can still contribute reported usage. The SDK worker returns per-response usage alongside its structured result; generated proposal fields cannot set token counts. All writing paths share the metered providers from `AppState.makeProvider()`.
+
+Settings shows UTC day/month/all-recorded totals and per-model counts. Cached tokens are a subset of input; reasoning tokens are a subset of output. Missing metadata is omitted rather than inferred as zero. Interrupted streams and SDK failures can undercount; the view labels these as local usage, links to account billing, and offers a reset. Corrupt or newer-schema usage files are preserved until explicit reset. Usage storage failures are shown in Settings and do not invalidate writing proposals.

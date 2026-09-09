@@ -26,6 +26,15 @@ For an optimized build:
 ./scripts/build.sh release
 ```
 
+To build an optimized app and install it in `/Applications`:
+
+```sh
+./scripts/install.sh
+open /Applications/Clearline.app
+```
+
+The installer verifies the development signature, stages the new app before replacing an existing Clearline installation, and requests `sudo` only if the destination directory needs it. Run it as your normal user. Quit any running Clearline instance before opening the installed copy. Documents, preferences, and Keychain credentials remain in their existing locations. For a debug build or a different existing Applications directory, use `./scripts/install.sh debug "$HOME/Applications"`.
+
 The script builds the Swift package, creates `dist/Clearline.app`, draws the original application icon, generates bundle metadata from `Brand` in `Models.swift`, and applies an **ad-hoc development signature**. Open `Package.swift` in Xcode for source navigation and debugging, or use `swift run Clearline` for editor development. Use the packaged app for Keychain, menu-bar, launch-at-login, and Accessibility testing: an unbundled executable has different OS identity behavior. Quit and reopen after a build to load the new executable.
 
 The build deliberately disables **SwiftPM's manifest sandbox**, not the macOS application security system. In a restricted agent environment, compiler cache warnings are harmless, but native spelling, Launch Services, and `iconutil` may require execution outside that agent sandbox. A sandboxed spelling test can fail despite an installed dictionary. Do not treat that result as a working offline service.
@@ -47,7 +56,7 @@ Open **Settings → OpenAI**. Read the cloud disclosure, then either enter your 
 
 **Verified in this session after explicit user approval:** literal key import into Keychain, credential access after relaunch, account discovery of all three supported models, real native `gpt-4.1-mini` proposal review/application, and real Agents SDK `gpt-5.4`/`low` proposals. Model and effort persisted through relaunch. A cancelled regeneration left the source unchanged. No production AI result was simulated. Quota exhaustion and billing were not tested.
 
-After saving a key, **Refresh models** intersects account models with the reviewed capability catalog. Currently supported:
+After saving a key, **Refresh models** fetches the account’s model list directly from `/v1/models`, bypassing the local HTTP cache. All returned model IDs appear, including new models and snapshots. The following models have known reasoning settings:
 
 | Model | Reasoning effort |
 | --- | --- |
@@ -55,7 +64,9 @@ After saving a key, **Refresh models** intersects account models with the review
 | `gpt-4.1` | Not adjustable; parameter omitted |
 | `gpt-5.4` | `none`, `low`, `medium`, `high`, `xhigh` |
 
-These are deliberately verified models, not every model in `/v1/models`, and not a claim that all are available to your account. Unknown models are excluded. A model change visibly normalizes unsupported effort; API errors never silently switch models. Defaults persist locally and can be overridden in the writing panel. Each request captures immutable model, effort, output limit, and timeout values.
+The catalog above supplies settings, not an allowlist. Other models are labeled **unverified for writing** and use API-default reasoning (the parameter is omitted) in both the native client and Agents SDK. The Models API provides IDs and basic metadata, not supported endpoints, structured-output compatibility, or reasoning levels. The list can include audio, image, and other models unsuitable for writing; discovery alone does not verify compatibility. Refresh does not generate text or run billable capability probes. Failed refreshes clear the available list so stale discovery is not presented as current. A model change visibly normalizes unsupported effort; API errors never silently switch models. Defaults persist locally and can be overridden in the writing panel. Each request captures immutable model, effort, output limit, and timeout values.
+
+**Settings → OpenAI → API usage** shows locally recorded responses with usage, input/output/total tokens, reported cached input and reasoning tokens, and a model breakdown. Choose Today, This month, or All recorded; day and month boundaries use UTC. Counts come from provider usage metadata in native terminal responses (including incomplete or invalid proposals when metadata arrives) and successful Agents SDK results. Cached input and reasoning tokens are subsets, not additional tokens. Stats persist in `api-usage.json`, containing only dates, model IDs, and aggregate counts across keys used on this Mac. Reset local stats clears these aggregates. Earlier usage, cancelled streams, disconnected requests, and failed SDK runs may be missing; this is not billing or a remaining-credit balance. The linked OpenAI usage dashboard provides account usage. No additional API requests are made to collect these stats.
 
 Select text or choose a paragraph/document operation. Choose clarity, shortening, expansion, simplification, tone changes, a custom rewrite, drafting, summarization, notes-to-email/message/outline/document, missing-context review, or translation. Inspect original and proposed text, word-level changes, explanations, and heuristic fact-change warnings. Regenerate with follow-up instructions, copy, cancel, or accept. Protected-content and fact preservation are **not guaranteed**; suspicious changes require acknowledgement before acceptance. Malformed, incomplete, cancelled, and stale responses cannot edit the document.
 
@@ -105,11 +116,12 @@ Data lives at `~/Library/Application Support/Clearline`:
 
 - `library.json`: versioned documents, stable IDs, monotonic revisions, selected document, and up to 50 snapshots per document.
 - `library.backup.json`: previous known-good library; a damaged primary is preserved as `library.damaged-<id>.json` before recovery.
+- `api-usage.json`: local daily API token aggregates and recording start date; no credentials, prompts, or outputs.
 - `preferences.json`: goals, model/effort, dictionaries, terms, rule switches, explicitly supplied voice samples/profile, and app allow/block lists. **No keys.** Additive preference fields inherit defaults; invalid types fail visibly.
 
 Autosave debounces for 250 ms and writes atomically on a storage actor. Normal quit flushes pending saves; a failed flush cancels quit. A crash can lose the last debounce interval. Recovery tests corrupt the primary and confirm restoration from backup. Library schema 1 rejects newer schemas without overwriting them. More complex future migrations must be explicit and backed up before writing.
 
-For a manual backup, quit Clearline and copy the entire data folder (or use Time Machine). Restore while the app is closed. A document/history deletion updates automatic recovery copies and removes damaged-library copies, so deleted content is not retained there; separately managed/Time Machine backups remain your responsibility. Dictionary and voice controls delete those records. There is no analytics store or cloud sync.
+For a manual backup, quit Clearline and copy the entire data folder (or use Time Machine). Restore while the app is closed. A document/history deletion updates automatic recovery copies and removes damaged-library copies, so deleted content is not retained there; separately managed/Time Machine backups remain your responsibility. Dictionary and voice controls delete those records. There is no telemetry or cloud sync; API usage aggregates stay on this Mac.
 
 `CLEARLINE_DATA_DIR=/absolute/test/path` isolates local development data when launching from a terminal.
 

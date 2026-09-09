@@ -9,7 +9,20 @@ public struct ModelCapability: Codable, Identifiable, Equatable, Sendable {
         .init(id: "gpt-4.1", efforts: [], defaultEffort: ""),
         .init(id: "gpt-5.4", efforts: ["none", "low", "medium", "high", "xhigh"], defaultEffort: "none")
     ]
-    public static func available(_ ids: [String]) -> [ModelCapability] { catalog.filter { ids.contains($0.id) } }
+    // The catalog supplies known settings, not an allowlist. /models does not
+    // describe endpoint, structured-output, or reasoning compatibility.
+    public static func capability(for id: String) -> ModelCapability {
+        catalog.first { $0.id == id } ?? .init(id: id, efforts: [], defaultEffort: "")
+    }
+    public static func available(_ ids: [String]) -> [ModelCapability] {
+        Set(ids).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted().map { capability(for: $0) }
+    }
+    public var hasKnownSettings: Bool { Self.catalog.contains { $0.id == id } }
+    public var displayName: String { hasKnownSettings ? id : "\(id) · unverified for writing" }
+    public var reasoningDescription: String {
+        hasKnownSettings ? "No adjustable reasoning for this model." : "API-default reasoning. Writing compatibility has not been verified."
+    }
     public func validatedEffort(_ value: String) -> String { efforts.contains(value) ? value : defaultEffort }
 }
 
@@ -29,7 +42,8 @@ public struct RequestConfiguration: Codable, Equatable, Sendable {
     public let maxOutputTokens: Int
     public let timeout: Int
     public init(model: String, effort: String, maxOutputTokens: Int = 4096, timeout: Int = 90) throws {
-        guard let capability = ModelCapability.catalog.first(where: { $0.id == model }) else { throw ProviderError.unsupportedModel }
+        guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ProviderError.unsupportedModel }
+        let capability = ModelCapability.capability(for: model)
         guard capability.efforts.isEmpty ? effort.isEmpty : capability.efforts.contains(effort) else { throw ProviderError.unsupportedEffort }
         self.model = model; self.effort = capability.efforts.isEmpty ? nil : effort
         self.maxOutputTokens = min(16384, max(1024, maxOutputTokens)); self.timeout = min(300, max(15, timeout))
@@ -84,7 +98,7 @@ public enum ProviderError: Error, LocalizedError, Equatable {
         case .authentication: return "OpenAI rejected this key. Update it in Settings."
         case .rateLimit: return "OpenAI rate or quota limit reached. Check your account limits and try again later."
         case .unavailableModel: return "This model is unavailable to your account. Refresh models and choose another. Clearline has not switched models."
-        case .unsupportedModel: return "This model has not been verified for Clearline's text operations."
+        case .unsupportedModel: return "Choose a model returned by Refresh models."
         case .unsupportedEffort: return "This reasoning effort is not supported by the selected model."
         case .malformed: return "OpenAI returned an invalid proposal. Your source text was not changed."
         case .tooLarge: return "This request exceeds your input limit. Select a smaller passage or adjust the limit in Settings."
@@ -155,9 +169,12 @@ public enum OpenAIWire {
 public struct OpenAIProvider: WritingProvider {
     private let key: String
     private let session: URLSession
-    public init(key: String, session: URLSession = .shared) { self.key = key; self.session = session }
+    private let onUsage: @Sendable (String, TokenUsage) async -> Void
+    public init(key: String, session: URLSession = .shared, onUsage: @escaping @Sendable (String, TokenUsage) async -> Void = { _, _ in }) {
+        self.key = key; self.session = session; self.onUsage = onUsage
+    }
     public func models() async throws -> [ModelCapability] {
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!, cachePolicy: .reloadIgnoringLocalCacheData)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization"); request.timeoutInterval = 20
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw ProviderError.http((response as? HTTPURLResponse)?.statusCode ?? 0) }
@@ -197,6 +214,10 @@ public struct OpenAIProvider: WritingProvider {
                     guard line.hasPrefix("data: "), let data = line.dropFirst(6).data(using: .utf8),
                           let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = event["type"] as? String else { continue }
                     if type == "response.output_text.delta" { count += (event["delta"] as? String ?? "").count; await progress(count) }
+                    if ["response.completed", "response.failed", "response.incomplete"].contains(type),
+                       let response = event["response"] as? [String: Any], let usage = TokenUsage.parse(response["usage"]) {
+                        await onUsage(response["model"] as? String ?? writing.configuration.model, usage)
+                    }
                     if type == "response.completed", let response = event["response"] { return try OpenAIWire.parseResponse(JSONSerialization.data(withJSONObject: response)) }
                     if ["response.failed", "response.incomplete", "error"].contains(type) { throw ProviderError.incomplete }
                 }
