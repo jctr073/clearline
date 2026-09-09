@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+.DS_Store
+dist/
+.venv/
+__pycache__/
+*.pyc
+.env
+artifacts/*.log

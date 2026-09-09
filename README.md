@@ -1,0 +1,141 @@
+# Clearline
+
+A native Mac writing workspace with an AppKit editor, local writing checks, and optional OpenAI tools. SwiftUI supplies document navigation, suggestion cards, onboarding, settings, and proposal review. No account or network is needed for the editor.
+
+**Current delivery:** runnable development application with verified offline editing, real OpenAI rewrites through both the native Responses client and official Agents SDK, and automated integration tests. Accessibility permission is granted; real external replacement verification remains pending. This is not a Developer ID signed, notarized public release. See [feature status](docs/FEATURES.md), [verification](docs/VERIFICATION.md), and [host compatibility](docs/COMPATIBILITY.md).
+
+## Build and run
+
+Prerequisites:
+
+- macOS 14 or later; the actual test Mac runs macOS 26.6.2, Apple M3 Max, 36 GiB RAM.
+- Swift 6.0+ toolchain and full Xcode. Actual build: Swift 6.3.3, Xcode 26.6 (17F113). Swift 5 language mode is explicit in the package; application state is main-actor isolated.
+- No third-party Swift dependencies. Python is unnecessary for normal app use.
+
+From the repository:
+
+```sh
+./scripts/build.sh
+open dist/Clearline.app
+./scripts/test.sh
+```
+
+For an optimized build:
+
+```sh
+./scripts/build.sh release
+```
+
+The script builds the Swift package, creates `dist/Clearline.app`, draws the original application icon, generates bundle metadata from `Brand` in `Models.swift`, and applies an **ad-hoc development signature**. Open `Package.swift` in Xcode for source navigation and debugging, or use `swift run Clearline` for editor development. Use the packaged app for Keychain, menu-bar, launch-at-login, and Accessibility testing: an unbundled executable has different OS identity behavior. Quit and reopen after a build to load the new executable.
+
+The build deliberately disables **SwiftPM's manifest sandbox**, not the macOS application security system. In a restricted agent environment, compiler cache warnings are harmless, but native spelling, Launch Services, and `iconutil` may require execution outside that agent sandbox. A sandboxed spelling test can fail despite an installed dictionary. Do not treat that result as a working offline service.
+
+## Use the workspace
+
+Create a document with **⌘N**, paste or type, and review actual macOS spelling and local-rule findings. Click a card to select its range. Accept a change, dismiss it for the current revision, or add an unfamiliar spelling to your personal dictionary. **Edit → Undo / Redo** reverses accepted changes. Safe batch acceptance is available only for non-overlapping mechanical local corrections; stylistic and AI rewrites require individual review.
+
+- Rename with the editable document title. Search document titles and contents in the sidebar. Use a document's context menu to duplicate or delete it.
+- Import/export, full-document copy, selected-text copy, and revision history are in the editor's **…** menu.
+- **⌥⌘↓ / ⌥⌘↑** navigate suggestions. **⌘Return** accepts the selected suggestion; **⌥⌘Delete** dismisses it. Writing tools use **⇧⌘R**. The Writing menu also provides paragraph and full-document scopes.
+- Markdown is edited as literal source. Formatting buttons insert Markdown syntax. Plain-text formatting buttons are disabled. RTF supports attributed bold, italic, headings, lists, and links; advanced typography/layout is not a fidelity promise.
+- macOS keyboard input can still honor the user's double-space-to-period setting. Import/export does not perform this substitution.
+- Pause stops analysis and invalidates cross-app capture; typing and document management remain available.
+
+## OpenAI configuration
+
+Open **Settings → OpenAI**. Read the cloud disclosure, then either enter your own key in the secure field or choose **Import from ~/.zshrc**. The importer scans only for literal OpenAI key assignments, prefers `OPENAI_API_KEY`, and never sources the file or evaluates substitutions. Ambiguous/nonliteral assignments are refused. It does not print the key. It stores a configured key in macOS Keychain with service `com.clearline.desktop.openai`, account `api-key`, accessible only on this unlocked device. Finder-launched apps read Keychain, not shell environment variables.
+
+**Verified in this session after explicit user approval:** literal key import into Keychain, credential access after relaunch, account discovery of all three supported models, real native `gpt-4.1-mini` proposal review/application, and real Agents SDK `gpt-5.4`/`low` proposals. Model and effort persisted through relaunch. A cancelled regeneration left the source unchanged. No production AI result was simulated. Quota exhaustion and billing were not tested.
+
+After saving a key, **Refresh models** intersects account models with the reviewed capability catalog. Currently supported:
+
+| Model | Reasoning effort |
+| --- | --- |
+| `gpt-4.1-mini` | Not adjustable; parameter omitted |
+| `gpt-4.1` | Not adjustable; parameter omitted |
+| `gpt-5.4` | `none`, `low`, `medium`, `high`, `xhigh` |
+
+These are deliberately verified models, not every model in `/v1/models`, and not a claim that all are available to your account. Unknown models are excluded. A model change visibly normalizes unsupported effort; API errors never silently switch models. Defaults persist locally and can be overridden in the writing panel. Each request captures immutable model, effort, output limit, and timeout values.
+
+Select text or choose a paragraph/document operation. Choose clarity, shortening, expansion, simplification, tone changes, a custom rewrite, drafting, summarization, notes-to-email/message/outline/document, missing-context review, or translation. Inspect original and proposed text, word-level changes, explanations, and heuristic fact-change warnings. Regenerate with follow-up instructions, copy, cancel, or accept. Protected-content and fact preservation are **not guaranteed**; suspicious changes require acknowledgement before acceptance. Malformed, incomplete, cancelled, and stale responses cannot edit the document.
+
+The native client uses OpenAI's **Responses API**, streamed over HTTPS, with strict JSON Schema, `store: false`, no external tools, bounded payloads, a configurable timeout, and at most two retries for rate limits/transient server errors. The preview displays streaming progress; partial JSON never becomes an editable proposal. Automatic cloud checks are off by default. If enabled, they send the document after typing pauses, subject to the configured payload limit.
+
+`store: false` is not a promise of zero provider retention. Review your account's [OpenAI API data controls](https://developers.openai.com/api/docs/guides/your-data). Credentials, document bodies, and model outputs are not logged by Clearline.
+
+### Optional official Agents SDK boundary
+
+The desktop stays in Swift. An optional Python worker provides the official OpenAI **Agents SDK** `Agent`/`Runner` framework behind the same Swift `WritingProvider` protocol. It uses a private stdin/stdout pipe, not an HTTP listener. It receives the configured key only in memory over that pipe, disables tracing, has no file/browser tools or handoffs, enforces structured output, and exits after one operation. The native Responses client remains available without Python.
+
+Use Python **3.10 or later** (macOS's bundled Python 3.9 is insufficient):
+
+```sh
+CLEARLINE_PYTHON=/absolute/path/to/python3.11 ./scripts/install-agent-runtime.sh
+```
+
+The default installation is `~/Library/Application Support/Clearline/AgentRuntime`. Enable **Use local OpenAI Agents SDK runtime** in settings. Development overrides `CLEARLINE_AGENT_RUNTIME` (installer) and `CLEARLINE_AGENT_PYTHON` (app process) are available; Finder does not inherit them. Use the default installation for Finder launches. Dependencies are pinned in `agent-service/requirements.txt` to the versions actually tested.
+
+Run isolated SDK tests, without credentials:
+
+```sh
+"$HOME/Library/Application Support/Clearline/AgentRuntime/bin/python3" \
+  -m unittest discover -s agent-service -v
+```
+
+SDK worker results are delivered on completion rather than streamed into the preview. Cancelling terminates the child process. The native provider supports live streaming progress. The tested pair is `openai-agents==0.22.1` with `openai==3.10.0`, using Python 3.12.14. Six SDK tests pass, including real SDK run-context construction; real model calls also succeeded. An earlier incompatible dependency pair was caught during live verification and replaced.
+
+## Cross-app setup
+
+Open **Settings → Cross-app**, enable selected-text assistance, then explicitly grant Clearline permission in **System Settings → Privacy & Security → Accessibility**. You can revoke it there at any time. Clearline never requests it merely to open the editor.
+
+1. Allow the source app's bundle identifier. Only TextEdit is on the default allowlist; **this is not a compatibility claim**. A block always overrides an allow.
+2. Select text in that app, then invoke **⌥⌘Space** or **Assist selected text** in Clearline's menu-bar menu. Alternative shortcut keys are configurable; registration failures explain the menu fallback.
+3. Review the captured passage in the native floating panel. Generate and inspect a proposal.
+4. Choose **Replace selection**, **Copy**, or close the panel. Copy writes only when explicitly chosen; Clearline never reads or silently replaces the clipboard.
+
+Before replacement, Clearline rechecks permission, pause state, the allow/block lists, source process, actual AX element equality, full field value, exact selection and selected text. It writes only `AXSelectedText`; there is no whole-field replacement fallback. Unsupported hosts get an explicit copy/paste explanation. Secure roles/subroles and their ancestor chain are excluded. The field must expose both selected text and full value for the safety check; large fields over 200,000 UTF-16 units are refused. Captured text stays in memory and is not saved as a document/history entry.
+
+Source activation, relevant focus/value/selection changes, and supported window move/resize notifications invalidate the panel. It is a nonactivating floating `NSPanel`, clamped to the pointer's display. Selection geometry is queried where available; precise inline overlays are not shipped. Final validation is required even on hosts that omit change notifications. Host formatting and undo are **not universal**.
+
+**Current verification:** Accessibility permission was granted with user authentication. No external host has been certified yet; physical shortcut and host replacement checks are still pending. The [compatibility matrix](docs/COMPATIBILITY.md) records actual installed versions and the unresolved checks. Continuous cross-app observation and anchored indicators are deferred until a real host passes the safety/geometry tests.
+
+## Persistence, recovery, and deletion
+
+Data lives at `~/Library/Application Support/Clearline`:
+
+- `library.json`: versioned documents, stable IDs, monotonic revisions, selected document, and up to 50 snapshots per document.
+- `library.backup.json`: previous known-good library; a damaged primary is preserved as `library.damaged-<id>.json` before recovery.
+- `preferences.json`: goals, model/effort, dictionaries, terms, rule switches, explicitly supplied voice samples/profile, and app allow/block lists. **No keys.** Additive preference fields inherit defaults; invalid types fail visibly.
+
+Autosave debounces for 250 ms and writes atomically on a storage actor. Normal quit flushes pending saves; a failed flush cancels quit. A crash can lose the last debounce interval. Recovery tests corrupt the primary and confirm restoration from backup. Library schema 1 rejects newer schemas without overwriting them. More complex future migrations must be explicit and backed up before writing.
+
+For a manual backup, quit Clearline and copy the entire data folder (or use Time Machine). Restore while the app is closed. A document/history deletion updates automatic recovery copies and removes damaged-library copies, so deleted content is not retained there; separately managed/Time Machine backups remain your responsibility. Dictionary and voice controls delete those records. There is no analytics store or cloud sync.
+
+`CLEARLINE_DATA_DIR=/absolute/test/path` isolates local development data when launching from a terminal.
+
+## Distribution
+
+The chosen path is direct distribution with **Developer ID**, not the Mac App Store: Apple lists assistive Accessibility APIs among [functionality incompatible with App Sandbox](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox). This app is not App-Sandbox enabled. It still depends on explicit macOS Accessibility permission and Keychain access.
+
+The supplied bundle has only an ad-hoc local signature. Developer ID signing, hardened-runtime validation, notarization, stapling, and clean-machine Gatekeeper testing have **not** been performed. With your own signing identity and existing notary Keychain profile, the intended release steps are:
+
+```sh
+./scripts/build.sh release
+codesign --force --options runtime --timestamp \
+  --sign "Developer ID Application: YOUR IDENTITY" dist/Clearline.app
+codesign --verify --deep --strict --verbose=2 dist/Clearline.app
+ditto -c -k --keepParent dist/Clearline.app dist/Clearline.zip
+xcrun notarytool submit dist/Clearline.zip --keychain-profile YOUR_PROFILE --wait
+xcrun stapler staple dist/Clearline.app
+spctl --assess --type execute --verbose=2 dist/Clearline.app
+```
+
+Recreate the ZIP after stapling. Test the hardened app, optional Python runtime, Keychain continuity, login registration, AX permission continuity, and host matrix before publishing. Do not bypass Gatekeeper to claim a successful distribution test. The separately installed SDK runtime is not bundled/signature-verified as a standalone redistributable dependency; a polished SDK-enabled installer remains release work. See [Apple's Developer ID guidance](https://developer.apple.com/developer-id/).
+
+## Further documentation
+
+- [Feature checklist](docs/FEATURES.md): phases and exact implemented/verified/blocked/deferred scope.
+- [Architecture and decisions](docs/ARCHITECTURE.md): boundaries, invariants, privacy, and tradeoffs.
+- [Actual verification results](docs/VERIFICATION.md): automated and manual evidence, machine and timings.
+- [Compatibility matrix and manual checks](docs/COMPATIBILITY.md): no mock test is a host certification.
+- [Technical sources](docs/SOURCES.md): official documentation checked during implementation.
