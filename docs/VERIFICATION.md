@@ -101,3 +101,15 @@ Actual new screenshots: [native live response](../artifacts/openai-live-review.p
 ## Pre-publication rerun
 
 Before the initial GitHub push on September 9, the native suite passed again: 50 tests, zero failures, 3.745 seconds. The repaired SDK suite passed all six tests in 1.005 seconds. The native performance sample measured 60 ms for local rules, 12 ms initial layout, 31 ms slowest insertion, and 203 ms asynchronous spelling. No new live API requests were needed for this rerun. A credential-pattern scan of all 37 publishable text files found no matching secrets; generated binaries, runtime environments, and logs remain excluded by `.gitignore`.
+
+
+### Dynamic model discovery — September 9, 2026
+
+Removed the three-model allowlist in both native and Agents SDK request paths. A read-only `/v1/models` request using the existing environment credential returned 125 unique IDs, including 122 outside the former catalog. This checks discovery only, not writing compatibility or the app’s Keychain credential. No generation probes were sent.
+
+All 53 Swift tests and 7 Python SDK tests passed. Regression coverage exercises the model-list HTTP endpoint, cache bypass, no generation during discovery, new IDs, deduplication, default reasoning on the wire, preserved known settings, and failure without fallback models. The Swift suite required running outside the agent sandbox for macOS spelling services.
+
+
+### Local API usage stats — September 9, 2026
+
+All 60 Swift tests and 8 Agents SDK tests passed after adding usage stats. New deterministic coverage verifies UTC day/month boundaries, model aggregation, cached/reasoning subsets, missing and invalid metadata, concurrent writes, relaunch persistence, reset, corrupt-file preservation, and future-schema rejection. Transport fixtures verify that native terminal usage is captured before invalid/incomplete proposal handling and that generated text cannot spoof usage. The SDK fixture uses the installed SDK’s real usage types and verifies separate metadata in the worker envelope. No billable live generation was performed for this feature; earlier usage cannot be backfilled.

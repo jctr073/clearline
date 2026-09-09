@@ -21,13 +21,13 @@ struct AIReviewView: View {
                         Picker("Action", selection: $session.action) { ForEach(WritingAction.allCases.filter { $0 != .voice }) { Text($0.rawValue).tag($0) } }.frame(maxWidth: .infinity)
                         Picker("Model", selection: Binding(get: { session.model }, set: { session.changeModel($0) })) {
                             if !state.availableModels.contains(where: { $0.id == session.model }) { Text("\(session.model) · unavailable").tag(session.model) }
-                            ForEach(state.availableModels) { Text($0.id).tag($0.id) }
+                            ForEach(state.availableModels) { Text($0.displayName).tag($0.id) }
                         }.frame(maxWidth: .infinity)
                     }.disabled(session.running)
                     HStack {
                         if let capability, !capability.efforts.isEmpty {
                             Picker("Reasoning", selection: $session.effort) { ForEach(capability.efforts, id: \.self) { Text($0.capitalized).tag($0) } }.frame(width: 220).disabled(session.running)
-                        } else { Text("No adjustable reasoning for this model").font(.caption).foregroundStyle(.secondary) }
+                        } else { Text(capability?.reasoningDescription ?? "Refresh models in Settings to check availability.").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
                         Text("Higher effort can increase latency and cost.").font(.system(size: 10)).foregroundStyle(.secondary)
                     }
@@ -72,7 +72,7 @@ struct AIReviewView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
-                Text(session.running ? session.effective : "\(session.model) · \(session.effort.isEmpty ? "no adjustable reasoning" : session.effort) · OpenAI cloud").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(session.running ? session.effective : "\(session.model) · \(session.effort.isEmpty ? "API-default reasoning" : session.effort) · OpenAI cloud").font(.system(size: 10)).foregroundStyle(.secondary)
                 HStack {
                     if session.running {
                         ProgressView().controlSize(.small); Text(session.received > 0 ? "Receiving proposal… \(session.received) characters" : "Thinking…").font(.caption)

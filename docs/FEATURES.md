@@ -46,7 +46,7 @@ Status meanings: **V** = implemented and the stated behavior was actually verifi
 | Official agent framework isolated from Swift desktop | V/P | Python `Agent` + `Runner`, typed output, no tools, private pipes; 6 SDK tests plus actual GPT-5.4/low requests |
 | Locate local shell key without exposing it | V | Found assignment name `OPENAI_API_KEY`; key value not printed/dumped/sourced |
 | Secure explicit key setup and Keychain storage/removal | V/P | User approved import; stored key and successful retrieval across relaunch verified. Removal implemented but not exercised on this configured key |
-| Model picker populated from available supported models | V | Real account discovery showed all three supported catalog models |
+| Model picker populated from live account discovery | V | No model allowlist; unknown models use API defaults and are labeled unverified for writing. Live read returned 125 IDs using the environment credential; compatibility is not implied. |
 | Model-specific reasoning values and omitted unsupported parameters | V | gpt-4.1/mini omit reasoning; gpt-5.4 supports documented values; invalid combinations fail at wire boundary |
 | Persist defaults, per-operation overrides, visible normalization | V/P | Actual settings/action pickers and quit/relaunch retained GPT-5.4/low; unsupported-model effort normalization observed |
 | Immutable model/effort request snapshots | V | Constructor captures value types; transport/SDK tests assert requested model/effort; no silent model fallback |

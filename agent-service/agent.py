@@ -40,10 +40,10 @@ async def execute(payload):
     request = payload["request"]
     allowed = {"gpt-4.1-mini": (), "gpt-4.1": (), "gpt-5.4": ("none", "low", "medium", "high", "xhigh")}
     model = request["model"]
-    if model not in allowed:
+    if not isinstance(model, str) or not model.strip():
         raise ValueError("unsupported_model")
     effort = request.get("reasoning", {}).get("effort")
-    if (effort is not None and effort not in allowed[model]) or (allowed[model] and effort is None):
+    if (effort is not None and effort not in allowed.get(model, ())) or (allowed.get(model, ()) and effort is None):
         raise ValueError("unsupported_effort")
     settings = ModelSettings(max_tokens=request["max_output_tokens"], store=False)
     if effort is not None:
@@ -58,7 +58,16 @@ async def execute(payload):
             tools=[],
         )
         result = await asyncio.wait_for(Runner.run(agent, request["input"], max_turns=1), timeout=payload["timeout"])
-        return result.final_output.model_dump()
+        reports = []
+        for response in getattr(result, "raw_responses", []):
+            usage = response.usage
+            reports.append({"model": model, "usage": {
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "input_tokens_details": {"cached_tokens": usage.input_tokens_details.cached_tokens},
+                "output_tokens_details": {"reasoning_tokens": usage.output_tokens_details.reasoning_tokens},
+            }})
+        return {"result": result.final_output.model_dump(), "usage": reports}
 
 
 def main():
@@ -67,8 +76,7 @@ def main():
         if len(raw) > 1_000_000:
             raise ValueError("too_large")
         payload = json.loads(raw)
-        result = asyncio.run(execute(payload))
-        output = {"result": result}
+        output = asyncio.run(execute(payload))
     except BaseException as exc:
         name = type(exc).__name__
         code = {"AuthenticationError": "authentication", "PermissionDeniedError": "authentication", "RateLimitError": "rate_limit", "TimeoutError": "timeout", "APITimeoutError": "timeout", "APIConnectionError": "connection"}.get(name, "runtime")
