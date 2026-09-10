@@ -9,6 +9,7 @@ public enum LocalRules {
         var ranges = patterns.flatMap { pattern in
             (try? NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).map(\.range)) ?? []
         }
+        ranges += MarkdownTable.syntaxRanges(in: text)
         let names = NLTagger(tagSchemes: [.nameType]); names.string = text
         names.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: [.joinNames, .omitWhitespace, .omitPunctuation]) { tag, range in
             if let tag, [.personalName, .placeName, .organizationName].contains(tag) { ranges.append(NSRange(range, in: text)) }

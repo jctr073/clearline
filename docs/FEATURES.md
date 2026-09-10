@@ -13,7 +13,9 @@ Status meanings: **V** = implemented and the stated behavior was actually verifi
 | New, rename, search, duplicate, delete, reopen documents | P | Create, rename, reopen verified live; search/duplicate/delete implemented, persistence/deletion verified in tests; remaining UI paths need checklist run |
 | Local persistence, autosave, crash recovery | V/P | Atomic store/recovery/deletion tests pass; existing documents reopened; last 250 ms may be lost on crash, OS process-kill recovery not manually tested |
 | Plain text and Markdown import/export | I | UTF-8 source-preserving read/write, 20 MB import limit; end-to-end file-panel round trip pending |
-| Markdown headings/bold/italic/lists/links | I | Source syntax insertion; original Markdown is never rendered/re-serialized |
+| Markdown headings/bold/italic/lists/links | I | Source syntax insertion; preview never changes the stored Markdown |
+| Markdown table creation/editing and spreadsheet paste | V/P | Top-level GFM grid editor, row/column menus, alignment, header choice, quoted TSV, single-step undo and stale-draft checks tested; up to 20 columns and 200 body rows; multiline cells and container tables remain source-only |
+| Native Markdown table preview | V/P | Borders, header shading, wrapping, blank cells/rows, inline formatting, selection and 50–200% zoom covered by tests and rendered-view captures; full VoiceOver and minimum-OS certification pending |
 | Real native spelling without an API key | V | NSSpellChecker integration test and live misspelling card; `en_US` → Apple's `en` mapping verified |
 | Native grammar/punctuation where supported | P | Asynchronous grammar results and details parsed; no universal language coverage claim; grammar corpus validation pending |
 | Capitalization, repeated words, spacing | V/P | English “I”, consecutive repeated-word and space rules; unit tests for repetition/spacing; broader capitalization relies on native engine |

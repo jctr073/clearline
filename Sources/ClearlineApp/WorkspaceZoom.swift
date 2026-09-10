@@ -23,6 +23,7 @@ enum WorkspaceZoom {
 
 /// Reflow at the magnified viewport width instead of clipping enlarged lines.
 final class WorkspaceScrollView: NSScrollView {
+    var minimumDocumentWidth: CGFloat = 0
     override func layout() {
         super.layout()
         fitTextWidth()
@@ -35,7 +36,7 @@ final class WorkspaceScrollView: NSScrollView {
 
     func fitTextWidth() {
         guard let textView = documentView as? NSTextView else { return }
-        let width = contentView.bounds.width
+        let width = max(contentView.bounds.width, minimumDocumentWidth)
         guard width > 0, abs(textView.frame.width - width) > 0.5 else { return }
         textView.setFrameSize(NSSize(width: width, height: textView.frame.height))
     }

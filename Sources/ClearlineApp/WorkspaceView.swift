@@ -33,6 +33,7 @@ struct WorkspaceView: View {
         .preferredColorScheme(state.preferences.appearance == "Dark" ? .dark : state.preferences.appearance == "Light" ? .light : nil)
         .sheet(isPresented: $state.showOnboarding) { OnboardingView(state: state) }
         .sheet(isPresented: $state.showSettings) { SettingsView(state: state) }
+        .sheet(item: $state.tableSession) { session in MarkdownTableEditor(state: state, session: session) }
         .sheet(isPresented: $state.showHistory) { HistoryView(state: state) }
         .sheet(item: $state.aiSession) { session in AIReviewView(state: state, session: session, close: { session.cancel(); state.aiSession = nil }).frame(width: 780, height: 750) }
         .alert("\(Brand.name) needs your attention", isPresented: Binding(get: { state.error != nil }, set: { if !$0 { state.error = nil } })) { Button("OK") { state.error = nil } } message: { Text(state.error ?? "") }
@@ -106,6 +107,11 @@ struct WorkspaceView: View {
                         ForEach([("heading", "textformat.size"), ("bold", "bold"), ("italic", "italic"), ("list", "list.bullet"), ("link", "link")], id: \.0) { item in
                             Button { state.editor.format(item.0, document: document) } label: { Image(systemName: item.1).frame(width: 28, height: 26) }.buttonStyle(.plain).help("Insert \(item.0)").accessibilityLabel("Insert \(item.0)")
                                 .disabled(document.format == .txt || state.isMarkdownPreview)
+                        }
+                        if document.format == .md {
+                            Button { state.openTable() } label: { Image(systemName: "tablecells").frame(width: 28, height: 26) }
+                                .buttonStyle(.plain).help("Insert or edit table").accessibilityLabel("Insert or edit table")
+                                .disabled(state.isMarkdownPreview)
                         }
                         Spacer()
                         if document.format == .md {

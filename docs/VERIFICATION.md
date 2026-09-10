@@ -117,3 +117,17 @@ All 53 Swift tests and 7 Python SDK tests passed. Regression coverage exercises 
 ### Local API usage stats — September 9, 2026
 
 All 60 Swift tests and 8 Agents SDK tests passed after adding usage stats. New deterministic coverage verifies UTC day/month boundaries, model aggregation, cached/reasoning subsets, missing and invalid metadata, concurrent writes, relaunch persistence, reset, corrupt-file preservation, and future-schema rejection. Transport fixtures verify that native terminal usage is captured before invalid/incomplete proposal handling and that generated text cannot spoof usage. The SDK fixture uses the installed SDK’s real usage types and verifies separate metadata in the worker envelope. No billable live generation was performed for this feature; earlier usage cannot be backfilled.
+
+### Markdown tables — September 10, 2026
+
+All 91 Swift tests passed (4.050 seconds), including nine new table tests. Coverage includes source ranges with Unicode/CRLF, escaped pipes, alignment, ragged rows, fenced code/raw HTML exclusions, excess-cell detection, quoted spreadsheet paste and header choice, delimiter protection with continued prose checks, insert/edit/undo/redo, document revision synchronization, stale drafts, native cell layout including empty rows, inline formatting, and preview width at 50%, 100%, and 200% zoom. Native Tab/Shift-Tab navigation was exercised in a temporary AppKit window. The full suite ran with macOS service access; the sandboxed spelling-service test could not access its XPC service.
+
+Actual rendered SwiftUI/AppKit views using synthetic table content were captured and inspected: [table editor](../artifacts/table-editor.png) and [table preview](../artifacts/table-preview.png). Earlier light-mode captures were also inspected. These are view-level layout checks, not certification of every menu, clipboard source, VoiceOver interaction, or supported OS version. No live AI generation was performed for this feature. Markdown export remains source text; rendered RTF/DOCX tables are not implemented.
+
+### Preview crash after table insertion — September 10, 2026
+
+Reproduced the reported `EXC_BREAKPOINT` / `NSWindow._postWindowNeedsUpdateConstraints` failure in an isolated optimized SwiftUI app by applying a table, closing its sheet, and immediately entering Preview. Initial standalone rendering and window tests did not reproduce it; the sheet-to-Preview transition was necessary for the reproduction.
+
+Preview now supplies its viewport size explicitly to SwiftUI instead of letting the native text document's fitting size influence window constraints. Its document width is owned solely by `WorkspaceScrollView`; the competing width autoresizing mask has been removed. The original optimized code crashed in the reproduction, while the fixed code completed 15 paste/apply/Preview cycles across three isolated runs.
+
+All 93 Swift tests passed (16.253 seconds). New window tests exercise changing pasted grid dimensions, opening/applying/dismissing the table sheet, immediate Preview, multiple tables, narrow windows, horizontal overflow, and 50%, 90%, 100%, and 200% zoom while verifying source preservation. No live AI requests were made.

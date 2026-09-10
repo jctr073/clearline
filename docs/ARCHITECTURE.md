@@ -71,3 +71,11 @@ Remaining engineering work is tracked in FEATURES.md and COMPATIBILITY.md, inclu
 Settings shows UTC day/month/all-recorded totals and per-model counts. Cached tokens are a subset of input; reasoning tokens are a subset of output. Missing metadata is omitted rather than inferred as zero. Interrupted streams and SDK failures can undercount; the view labels these as local usage, links to account billing, and offers a reset. Corrupt or newer-schema usage files are preserved until explicit reset. Usage storage failures are shown in Settings and do not invalidate writing proposals.
 
 Read-only capture uses public [selected-text](https://developer.apple.com/documentation/applicationservices/kaxselectedtextattribute) and [string-for-range](https://developer.apple.com/documentation/applicationservices/kaxstringforrangeparameterizedattribute) attributes. Support depends on what each host exposes.
+
+### Markdown tables
+
+`MarkdownTable` parses top-level GFM source into headers, rows, alignments, and UTF-16 block ranges. Escaped pipes remain inline Markdown; the explicit spreadsheet importer escapes literal text and handles TSV quoting. It rejects embedded newlines and excessive dimensions. Rows exceeding header width are flagged so the grid cannot silently drop their extra cells.
+
+`MarkdownTableSession` holds a temporary grid plus the original document ID, revision, range, and text. Apply revalidates these through `EditorBridge`, replaces only the captured range in a named undo group, and uses the normal text-change/autosave path. Cancel does not mutate source. The toolbar and Table menu share this path. Undo routes to the active sheet field while the grid is open.
+
+Preview uses Foundation presentation intents with native `NSTextTable`/`NSTextTableBlock` layout. Empty top-level cells receive a zero-width placeholder only in rendering input because Foundation omits empty runs. The original source remains unchanged. The scroll view enforces a minimum table width while reflowing at workspace zoom. Local checks protect delimiters/padding while continuing to inspect cell prose; shared provider instructions request preservation of table structure.

@@ -19,6 +19,10 @@ final class AppState: ObservableObject {
     @Published var showOnboarding = !UserDefaults.standard.bool(forKey: "onboarded")
     @Published var showSettings = false
     @Published var showHistory = false
+    @Published var tableSession: MarkdownTableSession?
+    var activeUndoManager: UndoManager? {
+        tableSession == nil ? editor.textView?.undoManager : NSApp.keyWindow?.firstResponder?.undoManager
+    }
     @Published var showMarkdownPreview = false
     var isMarkdownPreview: Bool { showMarkdownPreview && current?.format == .md }
     var workspaceZoom: Double { WorkspaceZoom.clamped(preferences.workspaceZoom) }
