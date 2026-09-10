@@ -12,10 +12,10 @@ struct ClearlineApp: App {
         }.defaultSize(width: 1230, height: 830).windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .undoRedo) {
-                Button("Undo") { state.editor.textView?.undoManager?.undo() }.keyboardShortcut("z")
-                    .disabled(state.editor.textView?.undoManager?.canUndo != true)
-                Button("Redo") { state.editor.textView?.undoManager?.redo() }.keyboardShortcut("z", modifiers: [.command, .shift])
-                    .disabled(state.editor.textView?.undoManager?.canRedo != true)
+                Button("Undo") { state.activeUndoManager?.undo() }.keyboardShortcut("z")
+                    .disabled(state.activeUndoManager?.canUndo != true)
+                Button("Redo") { state.activeUndoManager?.redo() }.keyboardShortcut("z", modifiers: [.command, .shift])
+                    .disabled(state.activeUndoManager?.canRedo != true)
             }
             CommandGroup(replacing: .newItem) {
                 Button("New document") { state.newDocument(); showMain() }.keyboardShortcut("n")
@@ -27,6 +27,15 @@ struct ClearlineApp: App {
                 Button(state.isMarkdownPreview ? "Edit Markdown" : "Preview Markdown") { state.showMarkdownPreview.toggle() }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                     .disabled(state.current?.format != .md)
+            }
+            CommandMenu("Table") {
+                Button("Insert or Edit Table…") { state.openTable() }
+                    .keyboardShortcut("t", modifiers: [.command, .option])
+                    .disabled(state.current?.format != .md || state.isMarkdownPreview || state.tableSession != nil)
+                Menu("Paste as Table") {
+                    Button("Use First Row as Headers…") { state.openTable(paste: true) }
+                    Button("Generate Column Headers…") { state.openTable(paste: true, firstRowIsHeader: false) }
+                }.disabled(state.current?.format != .md || state.isMarkdownPreview || state.tableSession != nil)
             }
             CommandMenu("Writing") {
                 Button("Writing tools…") { state.startAI() }.keyboardShortcut("r", modifiers: [.command, .shift])

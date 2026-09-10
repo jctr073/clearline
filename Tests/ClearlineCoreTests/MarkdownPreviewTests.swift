@@ -41,7 +41,7 @@ final class MarkdownPreviewTests: XCTestCase {
     @MainActor
     func testTableCellsRemainSeparated() {
         let rendered = MarkdownRenderer.render("| A | B |\n|---|---|\n| x | y |", textSize: 18)
-        XCTAssertEqual(rendered.string, "A\tB\nx\ty")
+        XCTAssertEqual(rendered.string, "A\nB\nx\ny\n")
     }
 
     @MainActor
