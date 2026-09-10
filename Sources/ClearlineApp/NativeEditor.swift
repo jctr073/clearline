@@ -100,7 +100,7 @@ struct NativeEditor: NSViewRepresentable {
     let document: WritingDocument
     func makeCoordinator() -> Coordinator { Coordinator(state: state) }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false; scroll.borderType = .noBorder
+        let scroll = WorkspaceScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false; scroll.borderType = .noBorder
         let view = ClearlineTextView(frame: .zero)
         view.isRichText = document.format == .rtf; view.allowsUndo = true; view.isEditable = true; view.isSelectable = true
         view.isAutomaticSpellingCorrectionEnabled = false; view.isContinuousSpellCheckingEnabled = false; view.isGrammarCheckingEnabled = false
@@ -154,6 +154,7 @@ struct NativeEditor: NSViewRepresentable {
                 }
             }
         }
+        WorkspaceZoom.apply(state.workspaceZoom, to: scroll)
     }
     final class Coordinator: NSObject, NSTextViewDelegate {
         let state: AppState

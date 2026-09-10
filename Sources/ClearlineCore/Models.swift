@@ -98,6 +98,7 @@ public struct WritingPreferences: Codable, Equatable, Sendable {
     public var shortcutKey: UInt32 = 49 // Space
     public var shortcutModifiers: UInt32 = 0x0100 | 0x0800 // command + option
     public var textSize: Double = 18
+    public var workspaceZoom: Double = 1
     public var appearance = "System"
     public var useAgentService = false
     public init() {}

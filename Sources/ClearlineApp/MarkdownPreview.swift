@@ -6,10 +6,11 @@ struct MarkdownPreview: NSViewRepresentable {
     let text: String
     let textSize: Double
     let documentID: UUID
+    var zoom: Double = 1
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = WorkspaceScrollView()
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         let view = NSTextView(frame: .zero)
@@ -27,6 +28,7 @@ struct MarkdownPreview: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? NSTextView else { return }
+        WorkspaceZoom.apply(zoom, to: scroll)
         let coordinator = context.coordinator
         guard coordinator.text != text || coordinator.textSize != textSize || coordinator.documentID != documentID else { return }
         let switching = coordinator.documentID != documentID

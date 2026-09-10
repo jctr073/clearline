@@ -21,6 +21,11 @@ final class AppState: ObservableObject {
     @Published var showHistory = false
     @Published var showMarkdownPreview = false
     var isMarkdownPreview: Bool { showMarkdownPreview && current?.format == .md }
+    var workspaceZoom: Double { WorkspaceZoom.clamped(preferences.workspaceZoom) }
+    func setWorkspaceZoom(_ value: Double) {
+        preferences.workspaceZoom = WorkspaceZoom.clamped(value)
+        preferencesChanged(reanalyze: false)
+    }
     @Published var aiSession: AISession?
     @Published var availableModels: [ModelCapability] = []
     @Published var modelStatus = "Connect OpenAI to load available models."
@@ -129,14 +134,14 @@ final class AppState: ObservableObject {
         }
     }
     func flush() async throws { saveTask?.cancel(); try await store.save(library, purgeBackup: purgeOnSave); try await store.savePreferences(preferences) }
-    func preferencesChanged() {
+    func preferencesChanged(reanalyze: Bool = true) {
         preferencesTask?.cancel()
         let snapshot = preferences
         preferencesTask = Task {
             do { try await Task.sleep(for: .milliseconds(300)); try await store.savePreferences(snapshot) }
             catch is CancellationError {} catch { self.error = error.localizedDescription }
         }
-        scheduleAnalysis()
+        if reanalyze { scheduleAnalysis() }
     }
     func scheduleAnalysis() {
         analysisTask?.cancel(); suggestions = []; selectedIssue = nil

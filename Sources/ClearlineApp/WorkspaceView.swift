@@ -123,15 +123,13 @@ struct WorkspaceView: View {
                     NativeEditor(state: state, document: document)
                         .accessibilityHidden(state.isMarkdownPreview)
                     if state.isMarkdownPreview {
-                        MarkdownPreview(text: document.text, textSize: state.preferences.textSize, documentID: document.id)
+                        MarkdownPreview(text: document.text, textSize: state.preferences.textSize, documentID: document.id, zoom: state.workspaceZoom)
                     }
                 }
-                HStack(spacing: 18) {
-                    Text("\(state.metrics.words) words")
-                    Text("\(state.metrics.characters) characters")
-                    Spacer()
-                    Text("\(state.metrics.readingMinutes) min read")
-                }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 30).frame(height: 43).overlay(alignment: .top) { Divider() }
+                ViewThatFits(in: .horizontal) {
+                    editorFooter(fullMetrics: true)
+                    editorFooter(fullMetrics: false)
+                }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 24).frame(height: 43).overlay(alignment: .top) { Divider() }
             } else {
                 Spacer()
                 Image(systemName: "square.and.pencil").font(.system(size: 40, weight: .ultraLight)).foregroundStyle(Palette.teal)
@@ -140,6 +138,15 @@ struct WorkspaceView: View {
                 Spacer()
             }
         }.background(Palette.paper)
+    }
+    private func editorFooter(fullMetrics: Bool) -> some View {
+        HStack(spacing: 18) {
+            Text("\(state.metrics.words) words").fixedSize()
+            if fullMetrics { Text("\(state.metrics.characters) characters").fixedSize() }
+            Spacer(minLength: 8)
+            WorkspaceZoomControl(state: state)
+            if fullMetrics { Text("\(state.metrics.readingMinutes) min read").fixedSize() }
+        }
     }
     private var suggestionPane: some View {
         VStack(alignment: .leading, spacing: 0) {
