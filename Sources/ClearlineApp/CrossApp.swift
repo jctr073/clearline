@@ -10,10 +10,25 @@ struct ExternalSelection {
     let bundleID: String
     let appName: String
     let element: AXUIElement
-    let range: UTF16Range
+    let range: UTF16Range?
     let text: String
-    let fullText: String
+    let fullText: String?
     let bounds: CGRect?
+    let canReplace: Bool
+
+    init(pid: pid_t, bundleID: String, appName: String, element: AXUIElement, range: UTF16Range?, text: String, fullText: String?, bounds: CGRect?, selectedTextIsSettable: Bool, maxInputCharacters: Int) throws {
+        guard !text.isEmpty, text.utf16.count <= maxInputCharacters else { throw CrossAppError.unsupported }
+        self.pid = pid; self.bundleID = bundleID; self.appName = appName; self.element = element
+        self.range = range; self.text = text; self.bounds = bounds
+        // Full-field context is needed only for replacement, never for a read-only capture.
+        let verifiedFullText: String?
+        if selectedTextIsSettable, let range, range.length > 0, let fullText,
+           fullText.utf16.count <= 200000, (try? EditEngine.substring(fullText, range: range)) == text {
+            verifiedFullText = fullText
+        } else { verifiedFullText = nil }
+        self.fullText = verifiedFullText
+        self.canReplace = verifiedFullText != nil
+    }
 }
 
 enum CrossAppError: String, LocalizedError, Error {
@@ -43,7 +58,8 @@ final class CrossAppController {
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             MainActor.assumeIsolated {
-                if let captured = self?.session?.external, app.processIdentifier != captured.pid && app.bundleIdentifier != Brand.bundleID { self?.invalidate() }
+                if let captured = self?.session?.external, captured.canReplace,
+                   app.processIdentifier != captured.pid && app.bundleIdentifier != Brand.bundleID { self?.invalidate() }
             }
         }
     }
@@ -94,34 +110,57 @@ final class CrossAppController {
         guard AXValueGetValue(value as! AXValue, .cfRange, &range) else { return nil }
         return UTF16Range(range.location, range.length)
     }
+    private func parameterizedAttribute(_ element: AXUIElement, _ name: String, range: UTF16Range) -> CFTypeRef? {
+        guard range.location >= 0, range.length > 0 else { return nil }
+        var selection = CFRange(location: range.location, length: range.length), value: CFTypeRef?
+        guard let parameter = AXValueCreate(.cfRange, &selection),
+              AXUIElementCopyParameterizedAttributeValue(element, name as CFString, parameter, &value) == .success else { return nil }
+        return value
+    }
     func capture() {
         do {
             show(try readSelection())
         } catch { state?.crossAppMessage = error.localizedDescription; showMessage(error.localizedDescription) }
     }
     func readSelection() throws -> ExternalSelection {
-            guard let state, state.preferences.crossAppEnabled else { throw CrossAppError.disabled }
-            guard !state.paused else { throw CrossAppError.paused }
-            guard trusted else { throw CrossAppError.permission }
-            guard let sourceApp = NSWorkspace.shared.frontmostApplication, let bundleID = sourceApp.bundleIdentifier,
-                  state.preferences.allowedApps.contains(bundleID), !state.preferences.blockedApps.contains(bundleID) else { throw CrossAppError.blocked }
-            let app = AXUIElementCreateApplication(sourceApp.processIdentifier)
-            AXUIElementSetMessagingTimeout(app, 1)
-            guard let element = focused(app) else { throw CrossAppError.unsupported }
+        guard let state, state.preferences.crossAppEnabled else { throw CrossAppError.disabled }
+        guard !state.paused else { throw CrossAppError.paused }
+        guard trusted else { throw CrossAppError.permission }
+        guard let sourceApp = NSWorkspace.shared.frontmostApplication, let bundleID = sourceApp.bundleIdentifier,
+              state.preferences.allowedApps.contains(bundleID), !state.preferences.blockedApps.contains(bundleID) else { throw CrossAppError.blocked }
+        let app = AXUIElementCreateApplication(sourceApp.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 1)
+        guard let focusedElement = focused(app) else { throw CrossAppError.unsupported }
+        var element = focusedElement
+        // Some read-only views expose their selection on a containing text area.
+        for _ in 0..<8 {
             AXUIElementSetMessagingTimeout(element, 1)
             guard !secure(element) else { throw CrossAppError.secure }
-            guard let range = selectedRange(element), range.length > 0, range.length <= state.preferences.maxInputCharacters,
-                  let text = attribute(element, kAXSelectedTextAttribute) as? String,
-                  let full = attribute(element, kAXValueAttribute) as? String, full.utf16.count <= 200000,
-                  (try? EditEngine.substring(full, range: range)) == text else { throw CrossAppError.unsupported }
-            var selection = CFRange(location: range.location, length: range.length), value: CFTypeRef?
-            var bounds: CGRect?
-            if let parameter = AXValueCreate(.cfRange, &selection), AXUIElementCopyParameterizedAttributeValue(element, kAXBoundsForRangeParameterizedAttribute as CFString, parameter, &value) == .success,
-               let value, CFGetTypeID(value) == AXValueGetTypeID() { var rect = CGRect.zero; if AXValueGetValue(value as! AXValue, .cgRect, &rect) { bounds = rect } }
-            let captured = ExternalSelection(pid: sourceApp.processIdentifier, bundleID: bundleID, appName: sourceApp.localizedName ?? "Source app", element: element, range: range, text: text, fullText: full, bounds: bounds)
-            return captured
+            let range = selectedRange(element)
+            var text = attribute(element, kAXSelectedTextAttribute) as? String
+            if text?.isEmpty != false, let range, range.length <= state.preferences.maxInputCharacters {
+                text = parameterizedAttribute(element, kAXStringForRangeParameterizedAttribute, range: range) as? String
+            }
+            if let text, !text.isEmpty {
+                guard text.utf16.count <= state.preferences.maxInputCharacters else { throw CrossAppError.unsupported }
+                var settable = DarwinBoolean(false)
+                let writable = CFEqual(element, focusedElement) && AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
+                let full = writable ? attribute(element, kAXValueAttribute) as? String : nil
+                var bounds: CGRect?
+                if let range, let value = parameterizedAttribute(element, kAXBoundsForRangeParameterizedAttribute, range: range),
+                   CFGetTypeID(value) == AXValueGetTypeID() {
+                    var rect = CGRect.zero
+                    if AXValueGetValue(value as! AXValue, .cgRect, &rect) { bounds = rect }
+                }
+                return try ExternalSelection(pid: sourceApp.processIdentifier, bundleID: bundleID, appName: sourceApp.localizedName ?? "Source app", element: element, range: range, text: text, fullText: full, bounds: bounds, selectedTextIsSettable: writable, maxInputCharacters: state.preferences.maxInputCharacters)
+            }
+            guard let parent = attribute(element, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+            element = parent as! AXUIElement
+        }
+        throw CrossAppError.unsupported
     }
     func replace(_ captured: ExternalSelection, with replacement: String) throws {
+        guard captured.canReplace, let range = captured.range, let fullText = captured.fullText else { throw CrossAppError.notWritable }
         guard let state, !state.paused, state.preferences.crossAppEnabled, trusted else { throw CrossAppError.permission }
         guard state.preferences.allowedApps.contains(captured.bundleID), !state.preferences.blockedApps.contains(captured.bundleID) else { throw CrossAppError.blocked }
         guard session?.external?.id == captured.id, !((session?.stale) ?? true),
@@ -133,14 +172,14 @@ final class CrossAppController {
         var settable = DarwinBoolean(false)
         guard AXUIElementIsAttributeSettable(current, kAXSelectedTextAttribute as CFString, &settable) == .success, settable.boolValue else { throw CrossAppError.notWritable }
         guard AXUIElementSetAttributeValue(current, kAXSelectedTextAttribute as CFString, replacement as CFString) == .success else { throw CrossAppError.replacementFailed }
-        let expected = (captured.fullText as NSString).replacingCharacters(in: captured.range.nsRange, with: replacement)
+        let expected = (fullText as NSString).replacingCharacters(in: range.nsRange, with: replacement)
         guard attribute(current, kAXValueAttribute) as? String == expected else { invalidate(); throw CrossAppError.replacementFailed }
         panel?.orderOut(nil); session?.cancel(); session = nil; stopObserving()
     }
     private func show(_ captured: ExternalSelection) {
         guard let state else { return }
         session?.cancel(); panel?.close(); stopObserving()
-        let session = AISession(original: captured.text, documentID: nil, revision: nil, range: captured.range, action: .clarity, preferences: state.preferences, external: captured)
+        let session = AISession(original: captured.text, documentID: nil, revision: nil, range: captured.range ?? UTF16Range(0, captured.text.utf16.count), action: .clarity, preferences: state.preferences, external: captured)
         self.session = session
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 700, height: 700), styleMask: [.titled, .closable, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "\(Brand.name) · \(captured.appName)"; panel.level = .floating; panel.isReleasedWhenClosed = false
@@ -152,7 +191,7 @@ final class CrossAppController {
             panel.setFrame(NSRect(x: min(max(NSEvent.mouseLocation.x + 12, frame.minX), frame.maxX - 700), y: max(frame.minY, min(NSEvent.mouseLocation.y - 350, frame.maxY - 700)), width: min(700, frame.width), height: min(700, frame.height)), display: true)
         }
         self.panel = panel; panel.orderFrontRegardless()
-        observe(captured)
+        if captured.canReplace { observe(captured) }
     }
     private func showMessage(_ text: String) {
         let alert = NSAlert(); alert.messageText = "\(Brand.name) selected-text assistance"; alert.informativeText = text

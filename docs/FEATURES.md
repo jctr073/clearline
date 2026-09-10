@@ -59,7 +59,7 @@ Status meanings: **V** = implemented and the stated behavior was actually verifi
 | Missing context, unclear requests, absent next steps | B | Assessment action returns explanations/recommendations; no facts/citations invented by local code; model behavior needs evaluation |
 | Before/after and readable diff | V/P | Token diff tested; real native and SDK model-result diff screenshots captured |
 | Accept/copy/regenerate/follow-up/cancel | P | Real native proposal applied; SDK regeneration and immediate close during generation preserved original; Copy remains implemented but not manually tested |
-| Fact/name/quantity/date/link/technical-meaning preservation | P | Explicit instructions, protected spans, heuristic change flags and acknowledgement. Never guaranteed |
+| Fact/name/quantity/date/link/technical-meaning preservation | P | Explicit instructions, protected spans and informational heuristic change flags. Never guaranteed |
 | Personal voice from explicit samples only | I | Sample entry, cloud describe action, editable profile, enable/disable/delete controls; never derives from ambient documents; live derivation pending |
 | Streaming | V/P | Native SSE completed with a real structured result; parser failure tests pass; SDK worker returns at completion |
 | Cancellation, timeout, bounded retries | V/P | Native cancellation/timeout/3-attempt server tests and SDK timeout test pass; actual account limits pending |
@@ -78,13 +78,14 @@ Status meanings: **V** = implemented and the stated behavior was actually verifi
 | Configurable global shortcut and conflict fallback | I | Public Carbon hotkey registration, 4 choices, status/error and menu fallback; real delivery/conflict test pending AX grant |
 | Foreground selection capture with separate source identity | I/B | Permission granted; public AX selected text/range/value/element identity implementation; actual host certification still pending |
 | Native nonactivating floating review panel | I/B | SwiftUI in NSPanel, screen clamping; real host-focused screenshot pending physical shortcut/capture verification |
+| Read-only selection proposals | I/B | Capture without full-field/range requirements; Copy and optional workspace append with undo; regression tests pass, real host checks pending |
 | Replace only exact valid original selection | I/B | Permission granted; app/element/value/range/text revalidation and AXSelectedText-only write implemented; real host mutation pending |
 | Refuse changed focus/text/selection; explicit Copy fallback | I/B | Refusal paths implemented; mock/range tests cannot establish host behavior; actual stale-host cases pending |
 | Secure/password fields excluded | I/B | Role/subrole/ancestor checks precede text reads; secure-field host tests pending |
 | App allowlist/blocklist and pause | V/P | Stored lists, block-over-allow, disabled/paused guards tested; real host-list test pending |
 | Clipboard unchanged unless explicit Copy | I | Capture uses AX only; copy action is explicit. Clipboard sentinel manual test pending |
 | No continuous/background content collection | V | Capture only from explicit action; observers only while a captured panel exists; no polling collector |
-| Transient capture storage | V | Separate in-memory ExternalSelection, never added to library/history |
+| Transient capture storage | V | Separate in-memory ExternalSelection; explicit append saves only the proposal through the normal workspace edit path |
 | Panel invalidation after source change/move/resize | I/B | Workspace/AX notifications plus mandatory final validation; host notification/focus behavior unverified |
 | Multiple displays and geometry fallback | P | Pointer-display clamping and optional AX bounds query; no precise underline/anchoring promise; manual multi-display test pending |
 | Preserve formatting and undo when host supports them | B | Only native selected-text operation; preservation/undo unknown until each host is tested |

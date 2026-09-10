@@ -166,7 +166,19 @@ struct NativeEditor: NSViewRepresentable {
 
 final class ClearlineTextView: NSTextView {
     weak var state: AppState?
-    private let documentUndoManager = UndoManager()
+    private var undoObservers: [NSObjectProtocol] = []
+    private lazy var documentUndoManager: UndoManager = {
+        let manager = UndoManager()
+        // Storage-level edits undo their text without notifying the document delegate.
+        // Publish the completed undo/redo so autosave follows what the editor displays.
+        undoObservers = [NSNotification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: manager, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.didChangeText() }
+            }
+        }
+        return manager
+    }()
+    deinit { undoObservers.forEach { NotificationCenter.default.removeObserver($0) } }
     override var undoManager: UndoManager? { documentUndoManager }
     override func unmarkText() { super.unmarkText(); state?.textChanged(string, richText: isRichText ? rtf(from: NSRange(location: 0, length: string.utf16.count)) : nil); state?.compositionEnded() }
 }
