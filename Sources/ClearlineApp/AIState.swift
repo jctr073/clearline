@@ -23,13 +23,12 @@ final class AISession: ObservableObject, Identifiable {
     @Published var received = 0
     @Published var effective = ""
     @Published var stale = false
-    @Published var confirmedChanges = false
     @Published var applied = false
     private var task: Task<Void, Never>?
     private var generation = UUID()
     init(original: String, documentID: UUID?, revision: Int?, range: UTF16Range, action: WritingAction, preferences: WritingPreferences, external: ExternalSelection? = nil) {
         self.original = original; self.documentID = documentID; self.revision = revision; self.range = range; self.action = action
-        self.model = preferences.model; self.effort = preferences.effort; self.external = external
+        self.model = preferences.model; self.effort = ModelCapability.capability(for: preferences.model).validatedEffort(preferences.effort); self.external = external
     }
     func changeModel(_ id: String) {
         model = id
@@ -43,7 +42,7 @@ final class AISession: ObservableObject, Identifiable {
         cancel()
         let operation = UUID(); generation = operation
         let previous = result?.text
-        result = nil; diff = []; warnings = []; confirmedChanges = false; error = nil; received = 0; applied = false
+        result = nil; diff = []; warnings = []; error = nil; received = 0; applied = false
         let capturedAction = action
         do {
             guard state.availableModels.contains(where: { $0.id == model }) else { throw ProviderError.unavailableModel }
@@ -73,10 +72,30 @@ final class AISession: ObservableObject, Identifiable {
         } catch { self.error = error.localizedDescription }
     }
     private func receiveProgress(_ count: Int, operation: UUID) { if generation == operation { received = count } }
+    var isReadOnlyCapture: Bool { external?.canReplace == false }
+    func canAppendToWorkspace(state: AppState) -> Bool {
+        guard isReadOnlyCapture, let document = state.current, state.editor.documentID == document.id,
+              let view = state.editor.textView else { return false }
+        return view.isEditable && view.string == document.text && !view.hasMarkedText()
+    }
+    func appendToWorkspace(state: AppState, documentID: UUID) {
+        guard let result, !running, !applied, isReadOnlyCapture else { return }
+        do {
+            guard canAppendToWorkspace(state: state), let document = state.current, document.id == documentID else { throw EditError.stale }
+            let separator = document.text.isEmpty || document.text.hasSuffix("\n\n") ? "" : document.text.hasSuffix("\n") ? "\n" : "\n\n"
+            let edit = Suggestion(revision: document.revision, category: .clarity, rule: "openai.append", original: "", replacement: separator + result.text, explanation: result.explanation, range: UTF16Range(document.text.utf16.count, 0), optional: true)
+            try EditEngine.validate(edit, in: document)
+            state.recordRevision(document, force: true)
+            try state.editor.apply([edit], document: document)
+            state.editor.textView?.undoManager?.setActionName("Append proposal")
+            applied = true
+        } catch { self.error = error.localizedDescription }
+    }
     func apply(state: AppState) {
         guard let result, !running, !applied else { return }
         do {
             if let external {
+                guard external.canReplace, !action.analysisOnly else { throw CrossAppError.notWritable }
                 guard let controller = state.crossApp else { throw CrossAppError.changed }
                 try controller.replace(external, with: result.text)
             } else {
@@ -114,7 +133,8 @@ extension AppState {
             guard let key = try KeychainCredential.read() else { hasKey = false; availableModels = []; throw ProviderError.missingKey }
             hasKey = true; modelStatus = "Loading available models…"
             availableModels = try await OpenAIProvider(key: key).models()
-            modelStatus = availableModels.isEmpty ? "No models were returned for this account." : "\(availableModels.count) account models discovered. Writing compatibility varies."
+            let count = ModelCapability.writingModels(from: availableModels).count
+            modelStatus = count == 0 ? "No matching writing models available." : "\(count) writing models available."
             if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
         } catch { availableModels = []; modelStatus = error.localizedDescription }
     }

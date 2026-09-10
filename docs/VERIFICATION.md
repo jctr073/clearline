@@ -12,7 +12,9 @@ Updated September 9, 2026. “Implemented” is not interchangeable with “veri
 
 ## Automated execution
 
-`./scripts/test.sh` was actually executed with access to native macOS services. Final recorded suite: **50 tests, 0 failures, 0 skips**, 3.604 seconds. The build-sandbox-only attempt failed the native spelling service because OS service access was restricted; it is not the reported passing run.
+`./scripts/test.sh` was actually executed with access to native macOS services. Original recorded suite: **50 tests, 0 failures, 0 skips**, 3.604 seconds. The build-sandbox-only attempt failed the native spelling service because OS service access was restricted; it is not the reported passing run.
+
+**Follow-up validation (2026-09-09):** the current Swift suite passed **74 tests with 0 failures**, including read-only selection classification, refusal of direct replacement for read-only captures, bounded Unicode inputs, workspace append, destination validation, rich-text preservation, and document-model synchronization after Undo and Redo. The installed SDK runtime also passed **9 Python tests** without network calls. A release build was signed, verified, installed in `/Applications/Clearline.app`, and relaunched. VS Code 1.135.0 exposed selected README preview text through the UI automation tool and was added to the allowed-app list with user approval. The automation could not trigger Clearline's global shortcut, so end-to-end VS Code capture, generation, and append remain pending a physical shortcut check; this is not a host compatibility certification.
 
 Covered behaviors include:
 
@@ -29,7 +31,9 @@ Covered behaviors include:
 
 `python -m unittest discover -s agent-service -v` actually ran **6 tests, all passed**, after the dependency repair described below, using the installed official SDK. Tests inspect the real agent model/settings/output schema while replacing the SDK runner's network result inside tests; they verify reasoning, no tools, no stored state, timeout, invalid model/effort, and safe error output. No fixture is displayed by the production app and no key was used by the automated suite. The new regression test constructs the actual SDK run context without mocking Runner.
 
-Local command transcripts are in ignored `artifacts/*.log` files: `tests-native.log`, `agent-tests.log`, `build-release.log`, and `clean-build.log`. The final source has no external Swift package dependencies. A fresh scratch-directory release build completed successfully in 14.19 seconds, separately from incremental builds. `codesign --verify --deep --strict` reports the packaged app valid on disk and satisfying its designated requirement; `plutil -lint` passes. This verifies an ad-hoc local signature only, not Developer ID signing/notarization.
+Local command transcripts are in ignored `artifacts/*.log` files: `tests-native.log`, `agent-tests.log`, `build-release.log`, and `clean-build.log`. The final source has no external Swift package dependencies. A fresh scratch-directory release build completed successfully in 14.19 seconds, separately from incremental builds. `codesign --verify --deep --strict` reports the packaged app valid on disk and satisfying its designated requirement; `plutil -lint` passes. Those original checks verified an ad-hoc local signature, not Developer ID signing/notarization.
+
+**Local signing update (2026-09-09):** `scripts/build.sh` now selects the single valid Apple Development identity, supports an explicit `CLEARLINE_SIGN_IDENTITY`, and refuses silent ad-hoc fallback. The packaged Clearline app was signed with the existing Jesse Carter Apple Development identity and passed `codesign --verify --deep --strict`. A temporary copy with changed bundle-version metadata was signed with the same identity: its code hash changed while its designated requirement remained identical. This verifies stable code identity across content changes. Keychain and Accessibility permission continuity after the initial reauthorization still requires a user-level check; this is not Developer ID distribution or notarization.
 
 ## Performance measurements
 

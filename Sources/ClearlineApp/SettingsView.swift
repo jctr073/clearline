@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var word = ""
     @State private var discouraged = ""
     @State private var preferred = ""
-    @State private var appID = ""
     @State private var message = ""
     @State private var voiceTask: Task<Void, Never>?
     @State private var describingVoice = false
@@ -87,22 +86,17 @@ struct SettingsView: View {
                 Text("Import reads a literal key assignment without running your shell configuration. Credentials are stored in this Mac's Keychain, never in documents or preferences.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Model defaults") {
-                Picker("Model", selection: Binding(get: { state.preferences.model }, set: { new in
+                WritingModelPicker(available: state.availableModels, selection: Binding(get: { state.preferences.model }, set: { new in
                     state.preferences.model = new
                     if let capability = state.availableModels.first(where: { $0.id == new }) {
                         let normalized = capability.validatedEffort(state.preferences.effort)
                         if normalized != state.preferences.effort { message = normalized.isEmpty ? capability.reasoningDescription : "Reasoning set to \(normalized) for \(new)." }
                         state.preferences.effort = normalized
                     }
-                })) {
-                    if !state.availableModels.contains(where: { $0.id == state.preferences.model }) { Text("\(state.preferences.model) · unavailable").tag(state.preferences.model) }
-                    ForEach(state.availableModels) { Text($0.displayName).tag($0.id) }
-                }
-                if let model = state.availableModels.first(where: { $0.id == state.preferences.model }), !model.efforts.isEmpty {
-                    Picker("Reasoning effort", selection: $state.preferences.effort) { ForEach(model.efforts, id: \.self) { Text($0.capitalized).tag($0) } }
-                } else { Text(ModelCapability.capability(for: state.preferences.model).reasoningDescription).font(.caption).foregroundStyle(.secondary) }
+                }))
+                ReasoningEffortPicker(model: state.preferences.model, selection: $state.preferences.effort)
                 Text("Higher reasoning effort may increase response time and cost. Each operation captures its settings when sent.").font(.caption).foregroundStyle(.secondary)
-                Text("Refresh checks your account directly. The list includes models for other uses; discovery does not verify writing support.").font(.caption).foregroundStyle(.secondary)
+                Text("Shows the latest main writing models available to your account.").font(.caption).foregroundStyle(.secondary)
                 HStack { Text(state.modelStatus).font(.caption); Spacer(); Button("Refresh models") { Task { await state.refreshModels() } }.disabled(!state.hasKey) }
             }
             UsageSettingsView(state: state)
@@ -166,12 +160,7 @@ struct SettingsView: View {
                 Picker("Shortcut key · Command + Option", selection: $state.preferences.shortcutKey) { Text("Space").tag(UInt32(49)); Text("R").tag(UInt32(15)); Text("J").tag(UInt32(38)); Text("K").tag(UInt32(40)) }.onChange(of: state.preferences.shortcutKey) { _, _ in state.crossApp?.configure() }
                 if let message = state.crossAppMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
             }
-            Section("Allowed apps · bundle identifiers") {
-                HStack { TextField("For example, com.apple.TextEdit", text: $appID); Button("Allow") { state.preferences.allowedApps.insert(appID); appID = "" }.disabled(appID.isEmpty); Button("Block") { state.preferences.blockedApps.insert(appID); state.crossApp?.invalidate(); appID = "" }.disabled(appID.isEmpty) }
-                ForEach(state.preferences.allowedApps.sorted(), id: \.self) { app in HStack { Text(app); Spacer(); Button("Remove") { state.preferences.allowedApps.remove(app); state.crossApp?.invalidate() } } }
-                ForEach(state.preferences.blockedApps.sorted(), id: \.self) { app in HStack { Text("Blocked: \(app)"); Spacer(); Button("Unblock") { state.preferences.blockedApps.remove(app) } } }
-                Text("A block overrides an allow. Adding an app does not establish compatibility. Consult docs/COMPATIBILITY.md for actual host test results.").font(.caption).foregroundStyle(.secondary)
-            }
+            ApplicationAccessView(state: state)
             Section("Continuous cross-app checks") {
                 Text("Not enabled in this build. Focused-field observation and anchored indicators require host-specific validation. Use the selected-text floating panel for explicit checks.").font(.callout)
             }

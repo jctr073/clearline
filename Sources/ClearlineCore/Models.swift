@@ -86,8 +86,8 @@ public struct WritingPreferences: Codable, Equatable, Sendable {
     public var voiceSamples = ""
     public var voiceProfile = ""
     public var voiceEnabled = false
-    public var model = "gpt-4.1-mini"
-    public var effort = ""
+    public var model = "gpt-5.6-terra"
+    public var effort = "medium"
     public var maxOutputTokens = 4096
     public var timeoutSeconds = 90
     public var maxInputCharacters = 24000

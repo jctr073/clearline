@@ -62,7 +62,9 @@ public actor DocumentStore {
         guard let stored = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               var defaults = try JSONSerialization.jsonObject(with: encoder.encode(WritingPreferences())) as? [String: Any] else { throw StoreError.invalidLibrary }
         defaults.merge(stored) { _, saved in saved }
-        return try JSONDecoder().decode(WritingPreferences.self, from: JSONSerialization.data(withJSONObject: defaults))
+        var preferences = try JSONDecoder().decode(WritingPreferences.self, from: JSONSerialization.data(withJSONObject: defaults))
+        preferences.effort = ModelCapability.capability(for: preferences.model).validatedEffort(preferences.effort)
+        return preferences
     }
 }
 public enum StoreError: String, Error, LocalizedError {
