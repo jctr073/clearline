@@ -73,10 +73,6 @@ struct WorkspaceView: View {
                 }
             }
             Spacer(minLength: 10)
-            VStack(alignment: .leading, spacing: 9) {
-                HStack { Image(systemName: "lock.shield"); Text("Your words stay yours.") }.font(.system(size: 11, weight: .medium))
-                Text("Documents live on this Mac.\nCloud tools are always your choice.").font(.system(size: 10)).lineSpacing(4).foregroundStyle(.white.opacity(0.5))
-            }.padding(13).frame(maxWidth: .infinity, alignment: .leading).overlay(RoundedRectangle(cornerRadius: 9).stroke(.white.opacity(0.12)))
             HStack {
                 Button { state.showSettings = true } label: { Label("Settings", systemImage: "gearshape").font(.system(size: 12)) }.buttonStyle(.plain)
                 Spacer()
@@ -109,13 +105,27 @@ struct WorkspaceView: View {
                     HStack(spacing: 4) {
                         ForEach([("heading", "textformat.size"), ("bold", "bold"), ("italic", "italic"), ("list", "list.bullet"), ("link", "link")], id: \.0) { item in
                             Button { state.editor.format(item.0, document: document) } label: { Image(systemName: item.1).frame(width: 28, height: 26) }.buttonStyle(.plain).help("Insert \(item.0)").accessibilityLabel("Insert \(item.0)")
-                                .disabled(document.format == .txt)
+                                .disabled(document.format == .txt || state.isMarkdownPreview)
                         }
                         Spacer()
+                        if document.format == .md {
+                            Picker("Markdown view", selection: $state.showMarkdownPreview) {
+                                Text("Edit").tag(false)
+                                Text("Preview").tag(true)
+                            }.pickerStyle(.segmented).labelsHidden().frame(width: 140)
+                                .help("Switch between Markdown source and preview · ⇧⌘P")
+                        }
                         Button { state.showHistory = true } label: { Image(systemName: "clock.arrow.circlepath").frame(width: 26, height: 26) }.buttonStyle(.plain).help("Revision history")
                     }.foregroundStyle(.secondary).font(.system(size: 12))
                 }.padding(.horizontal, 38).padding(.top, 33).padding(.bottom, 12)
-                NativeEditor(state: state, document: document)
+                ZStack {
+                    // Keep the editor mounted so preview never resets selection or undo history.
+                    NativeEditor(state: state, document: document)
+                        .accessibilityHidden(state.isMarkdownPreview)
+                    if state.isMarkdownPreview {
+                        MarkdownPreview(text: document.text, textSize: state.preferences.textSize, documentID: document.id)
+                    }
+                }
                 HStack(spacing: 18) {
                     Text("\(state.metrics.words) words")
                     Text("\(state.metrics.characters) characters")
@@ -139,7 +149,6 @@ struct WorkspaceView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack { Image(systemName: state.paused ? "pause.circle" : state.status.contains("Checking") ? "arrow.triangle.2.circlepath" : "checkmark.circle").foregroundStyle(Palette.teal); Text(state.status).font(.system(size: 11, weight: .medium)); Spacer(); Text(state.status.contains("OpenAI") ? "OPENAI CLOUD" : "ON DEVICE").font(.system(size: 8, weight: .semibold)).tracking(1).foregroundStyle(.secondary) }
-                        Text(state.suggestions.isEmpty ? "A little polish.\nA lot more you." : "Let’s make it\na little clearer.").font(.system(size: 26, weight: .medium, design: .serif)).lineSpacing(2)
                         Text(state.suggestions.isEmpty ? "Write freely. Suggestions will appear here as you go." : "\(state.suggestions.count) \(state.suggestions.count == 1 ? "thing" : "things") to consider. You have the final say.").font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(4)
                     }.padding(.top, 24)
                     HStack {

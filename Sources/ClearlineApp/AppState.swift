@@ -19,6 +19,8 @@ final class AppState: ObservableObject {
     @Published var showOnboarding = !UserDefaults.standard.bool(forKey: "onboarded")
     @Published var showSettings = false
     @Published var showHistory = false
+    @Published var showMarkdownPreview = false
+    var isMarkdownPreview: Bool { showMarkdownPreview && current?.format == .md }
     @Published var aiSession: AISession?
     @Published var availableModels: [ModelCapability] = []
     @Published var modelStatus = "Connect OpenAI to load available models."
@@ -44,6 +46,10 @@ final class AppState: ObservableObject {
         let root = directory ?? override.map { URL(fileURLWithPath: $0) } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(Brand.name)
         store = DocumentStore(directory: root)
         usageStore = UsageStore(directory: root)
+        editor.showSource = { [weak self] in
+            self?.showMarkdownPreview = false
+            self?.editor.textView?.enclosingScrollView?.isHidden = false
+        }
         if autoload { Task { await refreshUsage(); await load() } }
     }
     var current: WritingDocument? { library.documents.first { $0.id == library.selectedID } }

@@ -23,6 +23,11 @@ struct ClearlineApp: App {
                 Button("Export…") { state.exportDocument() }.keyboardShortcut("e", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) { Button("Settings…") { showMain(); state.showSettings = true }.keyboardShortcut(",") }
+            CommandGroup(after: .toolbar) {
+                Button(state.isMarkdownPreview ? "Edit Markdown" : "Preview Markdown") { state.showMarkdownPreview.toggle() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                    .disabled(state.current?.format != .md)
+            }
             CommandMenu("Writing") {
                 Button("Writing tools…") { state.startAI() }.keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Rewrite current paragraph…") { state.startAI(.clarity, paragraph: true) }
