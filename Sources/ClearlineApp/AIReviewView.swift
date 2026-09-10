@@ -65,6 +65,7 @@ struct AIReviewView: View {
                             }.padding(12).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                         }
                         Text("Fact preservation is not guaranteed. Review every proposal.").font(.system(size: 10)).foregroundStyle(.secondary)
+                        ProposalCountComparison(original: session.original, proposal: result.text)
                     }
                     if session.stale { Label("Your source changed. Copy the proposal or start a fresh capture.", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
                     if let error = session.error { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red).textSelection(.enabled) }

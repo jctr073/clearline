@@ -19,6 +19,13 @@ final class AppState: ObservableObject {
     @Published var showOnboarding = !UserDefaults.standard.bool(forKey: "onboarded")
     @Published var showSettings = false
     @Published var showHistory = false
+    @Published var showMarkdownPreview = false
+    var isMarkdownPreview: Bool { showMarkdownPreview && current?.format == .md }
+    var workspaceZoom: Double { WorkspaceZoom.clamped(preferences.workspaceZoom) }
+    func setWorkspaceZoom(_ value: Double) {
+        preferences.workspaceZoom = WorkspaceZoom.clamped(value)
+        preferencesChanged(reanalyze: false)
+    }
     @Published var aiSession: AISession?
     @Published var availableModels: [ModelCapability] = []
     @Published var modelStatus = "Connect OpenAI to load available models."
@@ -44,6 +51,10 @@ final class AppState: ObservableObject {
         let root = directory ?? override.map { URL(fileURLWithPath: $0) } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(Brand.name)
         store = DocumentStore(directory: root)
         usageStore = UsageStore(directory: root)
+        editor.showSource = { [weak self] in
+            self?.showMarkdownPreview = false
+            self?.editor.textView?.enclosingScrollView?.isHidden = false
+        }
         if autoload { Task { await refreshUsage(); await load() } }
     }
     var current: WritingDocument? { library.documents.first { $0.id == library.selectedID } }
@@ -123,14 +134,14 @@ final class AppState: ObservableObject {
         }
     }
     func flush() async throws { saveTask?.cancel(); try await store.save(library, purgeBackup: purgeOnSave); try await store.savePreferences(preferences) }
-    func preferencesChanged() {
+    func preferencesChanged(reanalyze: Bool = true) {
         preferencesTask?.cancel()
         let snapshot = preferences
         preferencesTask = Task {
             do { try await Task.sleep(for: .milliseconds(300)); try await store.savePreferences(snapshot) }
             catch is CancellationError {} catch { self.error = error.localizedDescription }
         }
-        scheduleAnalysis()
+        if reanalyze { scheduleAnalysis() }
     }
     func scheduleAnalysis() {
         analysisTask?.cancel(); suggestions = []; selectedIssue = nil

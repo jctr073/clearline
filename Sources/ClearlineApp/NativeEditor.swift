@@ -6,10 +6,12 @@ import ClearlineCore
 final class EditorBridge {
     weak var textView: NSTextView?
     var documentID: UUID?
+    var showSource: (() -> Void)?
     func apply(_ suggestions: [Suggestion], document: WritingDocument, batch: Bool = false) throws {
         guard documentID == document.id, let textView, textView.string == document.text, !textView.hasMarkedText() else { throw EditError.stale }
         let edits = try EditEngine.approved(suggestions, in: document, batch: batch)
         guard !edits.isEmpty else { return }
+        showSource?()
         let oldSelection = textView.selectedRange()
         var cursor = oldSelection.location
         guard textView.shouldChangeText(inRanges: edits.map { NSValue(range: $0.range.nsRange) }, replacementStrings: edits.map(\.replacement)) else { throw EditError.stale }
@@ -23,9 +25,10 @@ final class EditorBridge {
         textView.setSelectedRange(NSRange(location: min(cursor, textView.string.utf16.count), length: 0))
         textView.window?.makeFirstResponder(textView)
     }
-    func reveal(_ range: NSRange) { textView?.setSelectedRange(range); textView?.scrollRangeToVisible(range) }
+    func reveal(_ range: NSRange) { showSource?(); textView?.setSelectedRange(range); textView?.scrollRangeToVisible(range) }
     func replaceAll(_ text: String, richText: Data? = nil, action: String) {
         guard let view = textView, !view.hasMarkedText() else { return }
+        showSource?()
         view.undoManager?.beginUndoGrouping()
         let range = NSRange(location: 0, length: view.string.utf16.count)
         if view.shouldChangeText(in: range, replacementString: text) {
@@ -42,6 +45,7 @@ final class EditorBridge {
     }
     func format(_ kind: String, document: WritingDocument) {
         guard let view = textView else { return }
+        showSource?()
         if document.format == .rtf && (kind == "bold" || kind == "italic") {
             let trait: NSFontTraitMask = kind == "bold" ? .boldFontMask : .italicFontMask
             let range = view.selectedRange()
@@ -96,7 +100,7 @@ struct NativeEditor: NSViewRepresentable {
     let document: WritingDocument
     func makeCoordinator() -> Coordinator { Coordinator(state: state) }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false; scroll.borderType = .noBorder
+        let scroll = WorkspaceScrollView(); scroll.hasVerticalScroller = true; scroll.drawsBackground = false; scroll.borderType = .noBorder
         let view = ClearlineTextView(frame: .zero)
         view.isRichText = document.format == .rtf; view.allowsUndo = true; view.isEditable = true; view.isSelectable = true
         view.isAutomaticSpellingCorrectionEnabled = false; view.isContinuousSpellCheckingEnabled = false; view.isGrammarCheckingEnabled = false
@@ -115,6 +119,12 @@ struct NativeEditor: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let view = scroll.documentView as? ClearlineTextView else { return }
+        let wasHidden = scroll.isHidden
+        if state.isMarkdownPreview && view.window?.firstResponder === view {
+            view.window?.makeFirstResponder(nil)
+        }
+        scroll.isHidden = state.isMarkdownPreview
+        if wasHidden && !scroll.isHidden { view.window?.makeFirstResponder(view) }
         state.editor.textView = view
         let switching = state.editor.documentID != document.id
         if switching {
@@ -144,6 +154,7 @@ struct NativeEditor: NSViewRepresentable {
                 }
             }
         }
+        WorkspaceZoom.apply(state.workspaceZoom, to: scroll)
     }
     final class Coordinator: NSObject, NSTextViewDelegate {
         let state: AppState

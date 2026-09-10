@@ -61,7 +61,8 @@ Create a document with **⌘N**, paste or type, and review actual macOS spelling
 - Rename with the editable document title. Search document titles and contents in the sidebar. Use a document's context menu to duplicate or delete it.
 - Import/export, full-document copy, selected-text copy, and revision history are in the editor's **…** menu.
 - **⌥⌘↓ / ⌥⌘↑** navigate suggestions. **⌘Return** accepts the selected suggestion; **⌥⌘Delete** dismisses it. Writing tools use **⇧⌘R**. The Writing menu also provides paragraph and full-document scopes.
-- Markdown is edited as literal source. Formatting buttons insert Markdown syntax. Plain-text formatting buttons are disabled. RTF supports attributed bold, italic, headings, lists, and links; advanced typography/layout is not a fidelity promise.
+- Markdown has an **Edit / Preview** toggle (⇧⌘P). Preview renders headings, emphasis, lists, quotes, links, and code locally, with selectable text. Switching views preserves source, selection, and undo history; suggestion navigation and applied edits return to source. Images and embedded HTML are not rendered, and tables use basic text columns. Formatting buttons insert Markdown syntax in Edit mode. Plain-text formatting buttons are disabled. RTF supports attributed bold, italic, headings, lists, and links; advanced typography/layout is not a fidelity promise.
+- The center panel’s bottom bar has a **50–200% zoom slider**, zoom buttons, and a clickable percentage to reset to 100%. Magnification applies to both editing and Markdown preview, is remembered across launches, and leaves document text, saved formatting, and exports unchanged.
 - macOS keyboard input can still honor the user's double-space-to-period setting. Import/export does not perform this substitution.
 - Pause stops analysis and invalidates cross-app capture; typing and document management remain available.
 
