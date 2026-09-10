@@ -50,7 +50,7 @@ The same override works with `scripts/install.sh`. Keep using that identity for 
 
 After switching from an ad-hoc build, reauthorize the new app once for Keychain and Accessibility. For everyday use, install to `/Applications/Clearline.app` and open that copy consistently. Existing permission entries for the old signature may need to be removed and re-added. Stable signing prevents the identity from changing merely because the app was rebuilt; changes to signing identity, OS policy, or permission settings can still require authorization. See [Apple's code-signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
 
-For an intentional disposable ad-hoc build, use `CLEARLINE_SIGN_IDENTITY=- ./scripts/build.sh`; permission prompts may recur after each rebuild. Apple Development signing is for local development and is not Developer ID distribution or notarization.
+For an intentional disposable ad-hoc build (for example on a machine without an Apple Development certificate), use `./scripts/build.sh --ad-hoc` or `./scripts/install.sh --ad-hoc`, which is the same as setting `CLEARLINE_SIGN_IDENTITY=-`; permission prompts may recur after each rebuild. Apple Development signing is for local development and is not Developer ID distribution or notarization.
 
 The build deliberately disables **SwiftPM's manifest sandbox**, not the macOS application security system. In a restricted agent environment, compiler cache warnings are harmless, but native spelling, Launch Services, and `iconutil` may require execution outside that agent sandbox. A sandboxed spelling test can fail despite an installed dictionary. Do not treat that result as a working offline service.
 

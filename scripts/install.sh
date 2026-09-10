@@ -2,11 +2,17 @@
 set -euo pipefail
 
 usage() {
-    printf 'Usage: %s [release|debug] [applications-directory]\n' "$0"
+    printf 'Usage: %s [--ad-hoc] [release|debug] [applications-directory]\n' "$0"
     printf 'Defaults: release /Applications\n'
+    printf '  --ad-hoc  Sign without a certificate (same as CLEARLINE_SIGN_IDENTITY=-).\n'
+    printf '            Keychain/Accessibility approvals may be re-requested after each rebuild.\n'
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then usage; exit 0; fi
+if [[ "${1:-}" == "--ad-hoc" ]]; then
+    export CLEARLINE_SIGN_IDENTITY="-"
+    shift
+fi
 configuration="${1:-release}"
 applications_dir="${2:-/Applications}"
 if [[ $# -gt 2 || ! "$configuration" =~ ^(release|debug)$ || "$applications_dir" != /* ]]; then
