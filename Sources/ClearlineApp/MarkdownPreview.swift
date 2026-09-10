@@ -10,6 +10,17 @@ struct MarkdownPreview: NSViewRepresentable {
     var zoom: Double = 1
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // A scrolling preview takes the offered viewport size. Its NSTextView may be
+    // wider/taller than that viewport, so AppKit's content-derived fitting size
+    // must not feed back into SwiftUI's window constraint calculation.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+        Self.viewportSize(for: proposal)
+    }
+
+    static func viewportSize(for proposal: ProposedViewSize) -> CGSize {
+        CGSize(width: proposal.width ?? 600, height: proposal.height ?? 400)
+    }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = WorkspaceScrollView()
         scroll.hasVerticalScroller = true
@@ -24,7 +35,9 @@ struct MarkdownPreview: NSViewRepresentable {
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
-        view.autoresizingMask = .width
+        // WorkspaceScrollView owns the document width, including magnification
+        // and horizontal overflow. An autoresizing mask would compete with it.
+        view.autoresizingMask = []
         view.textContainer?.widthTracksTextView = true
         view.setAccessibilityLabel("Markdown preview")
         scroll.documentView = view

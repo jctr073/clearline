@@ -163,6 +163,87 @@ final class MarkdownTableTests: XCTestCase {
         XCTAssertNotNil(first.currentEditor(), "Shift-Tab should return to header column 1")
     }
     @MainActor
+    func testPastedGridChangesDimensionsInPresentedSheet() throws {
+        let state = AppState(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), autoload: false)
+        let doc = WritingDocument(text: "", format: .md)
+        state.library.documents = [doc]; state.library.selectedID = doc.id
+        state.showOnboarding = false; state.ready = true
+        let host = NSHostingView(rootView: WorkspaceView(state: state))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1230, height: 830), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = host; window.makeKeyAndOrderFront(nil)
+        defer { if let sheet = window.attachedSheet { window.endSheet(sheet) }; window.orderOut(nil) }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        state.openTable()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        let session = try XCTUnwrap(state.tableSession)
+        XCTAssertNotNil(window.attachedSheet)
+        for (columns, rows, length) in [(2, 3, 12), (6, 12, 2000), (1, 1, 1), (20, 20, 50), (3, 5, 0)] {
+            let row = Array(repeating: String(repeating: "a", count: length), count: columns).joined(separator: "\t")
+            session.table = try MarkdownTable.spreadsheet(Array(repeating: row, count: rows).joined(separator: "\n"), firstRowIsHeader: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            XCTAssertEqual(session.table.header.count, columns)
+        }
+        state.tableSession = nil
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    @MainActor
+    func testPastedTablePreviewInWorkspaceWindow() throws {
+        let state = AppState(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), autoload: false)
+        state.showOnboarding = false; state.ready = true
+        let doc = WritingDocument(text: "", format: .md)
+        state.library.documents = [doc]; state.library.selectedID = doc.id
+        let host = NSHostingView(rootView: WorkspaceView(state: state))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1230, height: 830), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = host; window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+        runDisplayCycle(for: 0.2)
+        for columns in [3, 6, 20, 1] {
+            let row = Array(repeating: "Long cell contents that need to wrap within the column", count: columns).joined(separator: "\t")
+            let table = try MarkdownTable.spreadsheet(Array(repeating: row, count: 12).joined(separator: "\n"), firstRowIsHeader: true)
+            state.showMarkdownPreview = false
+            let view = try XCTUnwrap(state.editor.textView)
+            let source = "# Heading\n\n" + String(repeating: "A paragraph with inline `code` and **bold text**. ", count: 12) + "\n\n```sh\nexample command\n```\n\n" + table.markdown + "\n\n" + table.markdown
+            view.insertText(source + "\n\n", replacementRange: NSRange(location: 0, length: view.string.utf16.count))
+            view.setSelectedRange(NSRange(location: view.string.utf16.count, length: 0))
+            state.openTable()
+            runDisplayCycle(for: 0.3)
+            XCTAssertNotNil(window.attachedSheet)
+            let session = try XCTUnwrap(state.tableSession)
+            session.table = table
+            XCTAssertTrue(session.apply(to: state))
+            state.tableSession = nil
+            let appliedSource = state.current?.text
+            // Enter Preview before the sheet's closing animation has finished.
+            state.showMarkdownPreview = true
+            for zoom in [0.9, 1.0, 0.5, 2.0] {
+                state.preferences.workspaceZoom = zoom
+                window.setContentSize(NSSize(width: zoom == 0.9 ? 960 : 1230, height: 830))
+                runDisplayCycle(for: 0.25)
+                XCTAssertEqual(state.current?.text, appliedSource)
+                func previewScroll(in view: NSView) -> WorkspaceScrollView? {
+                    if let text = view as? NSTextView, text.accessibilityLabel() == "Markdown preview" {
+                        return text.enclosingScrollView as? WorkspaceScrollView
+                    }
+                    return view.subviews.compactMap { previewScroll(in: $0) }.first
+                }
+                let scroll = try XCTUnwrap(previewScroll(in: host))
+                let preview = try XCTUnwrap(scroll.documentView as? NSTextView)
+                XCTAssertEqual(preview.frame.width, max(scroll.contentView.bounds.width, scroll.minimumDocumentWidth), accuracy: 1)
+                if columns == 20 { XCTAssertGreaterThan(preview.frame.width, scroll.contentView.bounds.width) }
+                XCTAssertEqual(try XCTUnwrap(window.contentView).frame.width, zoom == 0.9 ? 960 : 1230, accuracy: 1)
+            }
+        }
+    }
+    @MainActor
+    private func runDisplayCycle(for duration: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+            NSApp.stop(nil)
+            let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0)!
+            NSApp.postEvent(event, atStart: true)
+        }
+        NSApp.run()
+    }
+    @MainActor
     private func snapshot(_ view: NSView, path: String) throws {
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
