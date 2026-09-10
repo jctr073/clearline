@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# --ad-hoc is equivalent to CLEARLINE_SIGN_IDENTITY=- (no certificate needed).
+if [[ "${1:-}" == "--ad-hoc" ]]; then
+    export CLEARLINE_SIGN_IDENTITY="-"
+    shift
+fi
 configuration="${1:-debug}"
 # Keep the same certificate-backed identity across builds so macOS can track
 # Keychain and Accessibility approvals. Never silently fall back to ad-hoc.
