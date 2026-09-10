@@ -2,6 +2,19 @@ import XCTest
 @testable import ClearlineCore
 
 final class AnalysisAndStorageTests: XCTestCase {
+    func testSavedModelKeepsItsIdentityAndNormalizesNewlyKnownEffort() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DocumentStore(directory: directory)
+        var prefs = WritingPreferences()
+        for (model, saved, expected) in [("gpt-5.6-terra", "", "medium"), ("gpt-6-astra", "none", "medium"), ("gpt-5.6-sol", "high", "high"), ("gpt-4.1-mini", "", "")] {
+            prefs.model = model; prefs.effort = saved
+            try await store.savePreferences(prefs)
+            let restored = try await store.loadPreferences()
+            XCTAssertEqual(restored.model, model)
+            XCTAssertEqual(restored.effort, expected)
+        }
+    }
     func testRealRulesFindSpacingWordinessAndRepetition() {
         let doc = WritingDocument(text: "In order to write  clearly, avoid the the repetition.")
         let issues = LocalRules.analyze(doc, preferences: .init())

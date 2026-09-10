@@ -19,17 +19,14 @@ struct AIReviewView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .top) {
                         Picker("Action", selection: $session.action) { ForEach(WritingAction.allCases.filter { $0 != .voice }) { Text($0.rawValue).tag($0) } }.frame(maxWidth: .infinity)
-                        Picker("Model", selection: Binding(get: { session.model }, set: { session.changeModel($0) })) {
-                            if !state.availableModels.contains(where: { $0.id == session.model }) { Text("\(session.model) · unavailable").tag(session.model) }
-                            ForEach(state.availableModels) { Text($0.displayName).tag($0.id) }
-                        }.frame(maxWidth: .infinity)
+                        WritingModelPicker(available: state.availableModels, selection: Binding(get: { session.model }, set: { session.changeModel($0) }))
+                            .frame(maxWidth: .infinity)
                     }.disabled(session.running)
                     HStack {
-                        if let capability, !capability.efforts.isEmpty {
-                            Picker("Reasoning", selection: $session.effort) { ForEach(capability.efforts, id: \.self) { Text($0.capitalized).tag($0) } }.frame(width: 220).disabled(session.running)
-                        } else { Text(capability?.reasoningDescription ?? "Refresh models in Settings to check availability.").font(.caption).foregroundStyle(.secondary) }
+                        ReasoningEffortPicker(model: session.model, selection: $session.effort)
+                            .frame(width: 280).disabled(session.running)
                         Spacer()
-                        Text("Higher effort can increase latency and cost.").font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text("Higher effort can increase response time and cost.").font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                     if !session.selectionNotice.isEmpty { Text(session.selectionNotice).font(.caption).foregroundStyle(.secondary) }
                     TextField(session.action == .translate ? "Target language (required), e.g. Spanish" : "Add instructions, notes, or a follow-up…", text: $session.instructions, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder).disabled(session.running)

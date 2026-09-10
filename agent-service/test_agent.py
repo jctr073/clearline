@@ -39,6 +39,22 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         with patch("agents.Runner.run", side_effect=fake_run):
             await agent.execute(payload("gpt-5.4", "high"))
 
+    async def test_current_model_efforts_reach_sdk(self):
+        for model, efforts in [
+            ("gpt-6-astra", ("low", "medium", "high", "xhigh", "max")),
+            ("gpt-5.6-sol", ("none", "low", "medium", "high", "xhigh", "max")),
+            ("gpt-5.6-terra", ("none", "low", "medium", "high", "xhigh", "max")),
+            ("gpt-5.6-luna", ("none", "low", "medium", "high", "xhigh", "max")),
+            ("gpt-5.5", ("none", "low", "medium", "high", "xhigh")),
+        ]:
+            for effort in efforts:
+                async def fake_run(configured, inputs, max_turns):
+                    self.assertEqual(configured.model.model, model)
+                    self.assertEqual(configured.model_settings.reasoning.effort, effort)
+                    return SimpleNamespace(final_output=configured.output_type(text="Fixture", explanation="", tone="", warnings=[], recommendations=[], edits=[]))
+                with patch("agents.Runner.run", side_effect=fake_run):
+                    await agent.execute(payload(model, effort))
+
     async def test_discovered_model_uses_api_defaults(self):
         async def fake_run(configured, inputs, max_turns):
             self.assertEqual(configured.model.model, "future-text-model")
@@ -72,7 +88,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(usage["output_tokens_details"]["reasoning_tokens"], 10)
 
     async def test_invalid_effort_rejected_before_runner(self):
-        for value in [payload("gpt-4.1-mini", "high"), payload("gpt-5.4", "minimal"), payload("unknown", "high"), payload("")]:
+        for value in [payload("gpt-4.1-mini", "high"), payload("gpt-5.4", "minimal"), payload("unknown", "high"), payload("gpt-6-astra", "none"), payload("gpt-5.5", "max"), payload("gpt-5.6-terra", "ultra"), payload("")]:
             with self.assertRaises(ValueError):
                 await agent.execute(value)
 

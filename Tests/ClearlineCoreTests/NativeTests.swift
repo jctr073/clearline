@@ -5,6 +5,20 @@ import AppKit
 
 final class NativeTests: XCTestCase {
     @MainActor
+    func testWritingSessionNormalizesEffortWhenOpeningAndSwitchingModels() {
+        var prefs = WritingPreferences(); prefs.model = "gpt-5.6-terra"; prefs.effort = ""
+        let session = AISession(original: "Text", documentID: nil, revision: nil, range: UTF16Range(0, 4), action: .clarity, preferences: prefs)
+        XCTAssertEqual(session.effort, "medium")
+        session.effort = "none"
+        session.changeModel("gpt-6-astra")
+        XCTAssertEqual(session.model, "gpt-6-astra")
+        XCTAssertEqual(session.effort, "medium")
+        XCTAssertFalse(session.selectionNotice.isEmpty)
+        session.effort = "high"
+        session.changeModel("gpt-5.5")
+        XCTAssertEqual(session.effort, "high")
+    }
+    @MainActor
     func testNativeEditorSuggestionUndoAndRedo() throws {
         let view = ClearlineTextView(); view.allowsUndo = true; view.string = "bad spelling"
         let doc = WritingDocument(text: view.string)

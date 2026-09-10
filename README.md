@@ -35,7 +35,22 @@ open /Applications/Clearline.app
 
 The installer verifies the development signature, stages the new app before replacing an existing Clearline installation, and requests `sudo` only if the destination directory needs it. Run it as your normal user. Quit any running Clearline instance before opening the installed copy. Documents, preferences, and Keychain credentials remain in their existing locations. For a debug build or a different existing Applications directory, use `./scripts/install.sh debug "$HOME/Applications"`.
 
-The script builds the Swift package, creates `dist/Clearline.app`, draws the original application icon, generates bundle metadata from `Brand` in `Models.swift`, and applies an **ad-hoc development signature**. Open `Package.swift` in Xcode for source navigation and debugging, or use `swift run Clearline` for editor development. Use the packaged app for Keychain, menu-bar, launch-at-login, and Accessibility testing: an unbundled executable has different OS identity behavior. Quit and reopen after a build to load the new executable.
+The script builds the Swift package, creates `dist/Clearline.app`, draws the original application icon, generates bundle metadata from `Brand` in `Models.swift`, and signs with the single valid **Apple Development** identity in your login Keychain. The build fails if no unique identity is available; it never silently falls back to ad-hoc signing. Open `Package.swift` in Xcode for source navigation and debugging, or use `swift run Clearline` for editor development. Use the packaged app for Keychain, menu-bar, launch-at-login, and Accessibility testing: an unbundled executable has different OS identity behavior. Quit and reopen after a build to load the new executable.
+
+### Consistent local signing
+
+Use the same signing identity and app location for successive builds. By default, `build.sh` selects the single valid Apple Development signing identity on this Mac. If you have multiple identities, select one explicitly:
+
+```sh
+security find-identity -v -p codesigning
+CLEARLINE_SIGN_IDENTITY="<certificate SHA-1 from the list>" ./scripts/build.sh
+```
+
+The same override works with `scripts/install.sh`. Keep using that identity for both debug and release builds. The identity consists of a certificate and its associated private key in Keychain; the build uses `codesign` without exporting the key. If macOS asks to let `codesign` use the signing key, authorize that access yourself. A sandbox may hide identities, so run the build with Keychain access when necessary.
+
+After switching from an ad-hoc build, reauthorize the new app once for Keychain and Accessibility. For everyday use, install to `/Applications/Clearline.app` and open that copy consistently. Existing permission entries for the old signature may need to be removed and re-added. Stable signing prevents the identity from changing merely because the app was rebuilt; changes to signing identity, OS policy, or permission settings can still require authorization. See [Apple's code-signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+
+For an intentional disposable ad-hoc build, use `CLEARLINE_SIGN_IDENTITY=- ./scripts/build.sh`; permission prompts may recur after each rebuild. Apple Development signing is for local development and is not Developer ID distribution or notarization.
 
 The build deliberately disables **SwiftPM's manifest sandbox**, not the macOS application security system. In a restricted agent environment, compiler cache warnings are harmless, but native spelling, Launch Services, and `iconutil` may require execution outside that agent sandbox. A sandboxed spelling test can fail despite an installed dictionary. Do not treat that result as a working offline service.
 
@@ -56,15 +71,19 @@ Open **Settings → OpenAI**. Read the cloud disclosure, then either enter your 
 
 **Verified in this session after explicit user approval:** literal key import into Keychain, credential access after relaunch, account discovery of all three supported models, real native `gpt-4.1-mini` proposal review/application, and real Agents SDK `gpt-5.4`/`low` proposals. Model and effort persisted through relaunch. A cancelled regeneration left the source unchanged. No production AI result was simulated. Quota exhaustion and billing were not tested.
 
-After saving a key, **Refresh models** fetches the account’s model list directly from `/v1/models`, bypassing the local HTTP cache. All returned model IDs appear, including new models and snapshots. The following models have known reasoning settings:
+After saving a key, **Refresh models** checks `/v1/models` directly, bypassing the local HTTP cache. Settings and the writing panel show a short list of current writing models available to your account, newest first:
 
 | Model | Reasoning effort |
 | --- | --- |
-| `gpt-4.1-mini` | Not adjustable; parameter omitted |
-| `gpt-4.1` | Not adjustable; parameter omitted |
-| `gpt-5.4` | `none`, `low`, `medium`, `high`, `xhigh` |
+| GPT-6 Astra | Low, Medium, High, Extra high, Max |
+| GPT-5.6 Sol | None, Low, Medium, High, Extra high, Max |
+| GPT-5.6 Terra | None, Low, Medium, High, Extra high, Max |
+| GPT-5.6 Luna | None, Low, Medium, High, Extra high, Max |
+| GPT-5.5 | None, Low, Medium, High, Extra high |
 
-The catalog above supplies settings, not an allowlist. Other models are labeled **unverified for writing** and use API-default reasoning (the parameter is omitted) in both the native client and Agents SDK. The Models API provides IDs and basic metadata, not supported endpoints, structured-output compatibility, or reasoning levels. The list can include audio, image, and other models unsuitable for writing; discovery alone does not verify compatibility. Refresh does not generate text or run billable capability probes. Failed refreshes clear the available list so stale discovery is not presented as current. A model change visibly normalizes unsupported effort; API errors never silently switch models. Defaults persist locally and can be overridden in the writing panel. Each request captures immutable model, effort, output limit, and timeout values.
+Reasoning settings follow the [Astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol), [Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna), and [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5) API documentation. Extra high sends `xhigh`. Both the native client and optional Agents SDK use the selected effort. New installations default to Terra with Medium effort. Existing saved models remain selected, with a separate saved-model entry when outside the short list; unavailable selections are labeled. Previously empty or unsupported efforts normalize to the model's configured default on load, without changing the model.
+
+Audio, image, coding variants, and dated snapshots are omitted from the short list. Account discovery is retained separately to check availability of existing saved choices. Legacy `gpt-4.1` and `gpt-4.1-mini` omit reasoning; `gpt-5.4` retains None through Extra high. Unrecognized saved models use API-default reasoning. Refresh does not generate text or run billable capability probes. Failed refreshes clear discovery. Model changes normalize unsupported effort visibly, and API errors never switch models. Defaults persist locally and can be overridden in the writing panel. Each request captures immutable model, effort, output limit, and timeout values.
 
 **Settings → OpenAI → API usage** shows locally recorded responses with usage, input/output/total tokens, reported cached input and reasoning tokens, and a model breakdown. Choose Today, This month, or All recorded; day and month boundaries use UTC. Counts come from provider usage metadata in native terminal responses (including incomplete or invalid proposals when metadata arrives) and successful Agents SDK results. Cached input and reasoning tokens are subsets, not additional tokens. Stats persist in `api-usage.json`, containing only dates, model IDs, and aggregate counts across keys used on this Mac. Reset local stats clears these aggregates. Earlier usage, cancelled streams, disconnected requests, and failed SDK runs may be missing; this is not billing or a remaining-credit balance. The linked OpenAI usage dashboard provides account usage. No additional API requests are made to collect these stats.
 
@@ -99,7 +118,7 @@ SDK worker results are delivered on completion rather than streamed into the pre
 
 Open **Settings → Cross-app**, enable selected-text assistance, then explicitly grant Clearline permission in **System Settings → Privacy & Security → Accessibility**. You can revoke it there at any time. Clearline never requests it merely to open the editor.
 
-1. Allow the source app's bundle identifier. Only TextEdit is on the default allowlist; **this is not a compatibility claim**. A block always overrides an allow.
+1. Under **App access**, click **Browse apps…**, select one or more installed apps (Command-click for individual apps or Shift-click for a range), then click **Allow selected apps**. All selected apps are added directly to Allowed apps, without another confirmation step. The native browser starts in Applications and can navigate to other folders. Clearline reads the app name and bundle identifier without launching it; lists show names and icons, with identifiers below. **Advanced: enter a bundle identifier** remains available for manual entry and blocking apps. Allowing a blocked app moves it to Allowed apps; blocking an allowed app moves it to Blocked apps. Unblocking removes access until you allow the app again. Only TextEdit is on the default allowlist; **this is not a compatibility claim**. Missing apps retain their identifiers so you can remove them.
 2. Select text in that app, then invoke **⌥⌘Space** or **Assist selected text** in Clearline's menu-bar menu. Alternative shortcut keys are configurable; registration failures explain the menu fallback.
 3. Review the captured passage in the native floating panel. Generate and inspect a proposal.
 4. Choose **Replace selection**, **Copy**, or close the panel. Copy writes only when explicitly chosen; Clearline never reads or silently replaces the clipboard.
@@ -129,7 +148,7 @@ For a manual backup, quit Clearline and copy the entire data folder (or use Time
 
 The chosen path is direct distribution with **Developer ID**, not the Mac App Store: Apple lists assistive Accessibility APIs among [functionality incompatible with App Sandbox](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox). This app is not App-Sandbox enabled. It still depends on explicit macOS Accessibility permission and Keychain access.
 
-The supplied bundle has only an ad-hoc local signature. Developer ID signing, hardened-runtime validation, notarization, stapling, and clean-machine Gatekeeper testing have **not** been performed. With your own signing identity and existing notary Keychain profile, the intended release steps are:
+The default local bundle uses Apple Development signing. Developer ID signing, hardened-runtime validation, notarization, stapling, and clean-machine Gatekeeper testing have **not** been performed. With your own signing identity and existing notary Keychain profile, the intended release steps are:
 
 ```sh
 ./scripts/build.sh release

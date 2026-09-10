@@ -29,7 +29,7 @@ final class AISession: ObservableObject, Identifiable {
     private var generation = UUID()
     init(original: String, documentID: UUID?, revision: Int?, range: UTF16Range, action: WritingAction, preferences: WritingPreferences, external: ExternalSelection? = nil) {
         self.original = original; self.documentID = documentID; self.revision = revision; self.range = range; self.action = action
-        self.model = preferences.model; self.effort = preferences.effort; self.external = external
+        self.model = preferences.model; self.effort = ModelCapability.capability(for: preferences.model).validatedEffort(preferences.effort); self.external = external
     }
     func changeModel(_ id: String) {
         model = id
@@ -114,7 +114,8 @@ extension AppState {
             guard let key = try KeychainCredential.read() else { hasKey = false; availableModels = []; throw ProviderError.missingKey }
             hasKey = true; modelStatus = "Loading available models…"
             availableModels = try await OpenAIProvider(key: key).models()
-            modelStatus = availableModels.isEmpty ? "No models were returned for this account." : "\(availableModels.count) account models discovered. Writing compatibility varies."
+            let count = ModelCapability.writingModels(from: availableModels).count
+            modelStatus = count == 0 ? "No matching writing models available." : "\(count) writing models available."
             if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
         } catch { availableModels = []; modelStatus = error.localizedDescription }
     }

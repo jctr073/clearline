@@ -7,8 +7,20 @@ public struct ModelCapability: Codable, Identifiable, Equatable, Sendable {
     public static let catalog: [ModelCapability] = [
         .init(id: "gpt-4.1-mini", efforts: [], defaultEffort: ""),
         .init(id: "gpt-4.1", efforts: [], defaultEffort: ""),
-        .init(id: "gpt-5.4", efforts: ["none", "low", "medium", "high", "xhigh"], defaultEffort: "none")
+        .init(id: "gpt-5.4", efforts: ["none", "low", "medium", "high", "xhigh"], defaultEffort: "none"),
+        .init(id: "gpt-5.5", efforts: ["none", "low", "medium", "high", "xhigh"], defaultEffort: "medium"),
+        .init(id: "gpt-5.6-luna", efforts: ["none", "low", "medium", "high", "xhigh", "max"], defaultEffort: "medium"),
+        .init(id: "gpt-5.6-terra", efforts: ["none", "low", "medium", "high", "xhigh", "max"], defaultEffort: "medium"),
+        .init(id: "gpt-5.6-sol", efforts: ["none", "low", "medium", "high", "xhigh", "max"], defaultEffort: "medium"),
+        .init(id: "gpt-6-astra", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium")
     ]
+    // Latest main writing models, newest first. Keep discovery separate so an
+    // existing saved choice can still be used without silently switching models.
+    public static let writingModelIDs = ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
+    public static func writingModels(from available: [ModelCapability]) -> [ModelCapability] {
+        let ids = Set(available.map(\.id))
+        return writingModelIDs.filter { ids.contains($0) }.map { capability(for: $0) }
+    }
     // The catalog supplies known settings, not an allowlist. /models does not
     // describe endpoint, structured-output, or reasoning compatibility.
     public static func capability(for id: String) -> ModelCapability {
@@ -19,7 +31,13 @@ public struct ModelCapability: Codable, Identifiable, Equatable, Sendable {
             .sorted().map { capability(for: $0) }
     }
     public var hasKnownSettings: Bool { Self.catalog.contains { $0.id == id } }
-    public var displayName: String { hasKnownSettings ? id : "\(id) · unverified for writing" }
+    public var displayName: String {
+        guard hasKnownSettings else { return id }
+        return "GPT-" + id.dropFirst(4).split(separator: "-").map { $0.capitalized }.joined(separator: " ")
+    }
+    public static func effortDisplayName(_ effort: String) -> String {
+        effort == "xhigh" ? "Extra high" : effort.capitalized
+    }
     public var reasoningDescription: String {
         hasKnownSettings ? "No adjustable reasoning for this model." : "API-default reasoning. Writing compatibility has not been verified."
     }

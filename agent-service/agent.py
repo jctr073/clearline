@@ -38,7 +38,16 @@ async def execute(payload):
         edits: list[Edit]
 
     request = payload["request"]
-    allowed = {"gpt-4.1-mini": (), "gpt-4.1": (), "gpt-5.4": ("none", "low", "medium", "high", "xhigh")}
+    # Keep aligned with ModelCapability in ClearlineCore (official API model docs).
+    standard_efforts = ("none", "low", "medium", "high", "xhigh")
+    allowed = {
+        "gpt-4.1-mini": (), "gpt-4.1": (),
+        "gpt-5.4": standard_efforts, "gpt-5.5": standard_efforts,
+        "gpt-5.6-luna": standard_efforts + ("max",),
+        "gpt-5.6-terra": standard_efforts + ("max",),
+        "gpt-5.6-sol": standard_efforts + ("max",),
+        "gpt-6-astra": ("low", "medium", "high", "xhigh", "max"),
+    }
     model = request["model"]
     if not isinstance(model, str) or not model.strip():
         raise ValueError("unsupported_model")

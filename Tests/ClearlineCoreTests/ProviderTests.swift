@@ -30,6 +30,38 @@ final class ProviderTests: XCTestCase {
         XCTAssertTrue(models[1].hasKnownSettings)
         XCTAssertEqual(models[0].validatedEffort("high"), "")
     }
+    func testWritingPickerFiltersSpecializedModelsSnapshotsAndDuplicates() {
+        let discovered = ModelCapability.available([
+            "gpt-5.5", "gpt-5.5-2026-04-23", "gpt-5.6-luna", "gpt-5.6-terra",
+            "gpt-5.6-sol", "gpt-6-astra", "gpt-6-astra", "gpt-audio", "gpt-image-2",
+            "gpt-5.3-codex", "gpt-4.1-mini", "gpt-5.4", "future-model"
+        ])
+        let models = ModelCapability.writingModels(from: discovered)
+        XCTAssertEqual(models.map(\.id), ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"])
+        XCTAssertEqual(models.map(\.displayName), ["GPT-6 Astra", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5"])
+        XCTAssertEqual(ModelCapability.writingModels(from: ModelCapability.available(["gpt-5.6-terra", "whisper-1"])).map(\.id), ["gpt-5.6-terra"])
+        XCTAssertTrue(ModelCapability.writingModels(from: []).isEmpty)
+    }
+    func testCurrentModelEffortsReachWireAndInvalidChoicesAreRejected() throws {
+        let cases: [(String, [String])] = [
+            ("gpt-6-astra", ["low", "medium", "high", "xhigh", "max"]),
+            ("gpt-5.6-sol", ["none", "low", "medium", "high", "xhigh", "max"]),
+            ("gpt-5.6-terra", ["none", "low", "medium", "high", "xhigh", "max"]),
+            ("gpt-5.6-luna", ["none", "low", "medium", "high", "xhigh", "max"]),
+            ("gpt-5.5", ["none", "low", "medium", "high", "xhigh"])
+        ]
+        for (model, efforts) in cases {
+            XCTAssertEqual(ModelCapability.capability(for: model).efforts, efforts)
+            for effort in efforts {
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: OpenAIWire.body(request(model: model, effort: effort))) as? [String: Any])
+                XCTAssertEqual(body["model"] as? String, model)
+                XCTAssertEqual((body["reasoning"] as? [String: String])?["effort"], effort)
+            }
+            XCTAssertThrowsError(try request(model: model, effort: "ultra"))
+        }
+        XCTAssertThrowsError(try request(model: "gpt-6-astra", effort: "none"))
+        XCTAssertThrowsError(try request(model: "gpt-5.5", effort: "max"))
+    }
     func testDiscoveredModelReachesWireWithAPIDefaultReasoning() throws {
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: OpenAIWire.body(request(model: "future-text-model"))) as? [String: Any])
         XCTAssertEqual(body["model"] as? String, "future-text-model")
