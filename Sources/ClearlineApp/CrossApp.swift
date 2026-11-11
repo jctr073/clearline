@@ -179,7 +179,7 @@ final class CrossAppController {
     private func show(_ captured: ExternalSelection) {
         guard let state else { return }
         session?.cancel(); panel?.close(); stopObserving()
-        let session = AISession(original: captured.text, documentID: nil, revision: nil, range: captured.range ?? UTF16Range(0, captured.text.utf16.count), action: .clarity, preferences: state.preferences, external: captured)
+        let session = AISession(original: captured.text, documentID: nil, revision: nil, range: captured.range ?? UTF16Range(0, captured.text.utf16.count), preferences: state.preferences, external: captured)
         self.session = session
         let panel = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 700, height: 700), styleMask: [.titled, .closable, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "\(Brand.name) · \(captured.appName)"; panel.level = .floating; panel.isReleasedWhenClosed = false

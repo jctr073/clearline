@@ -39,6 +39,8 @@ final class AnalysisAndStorageTests: XCTestCase {
         try Data(#"{"model":"gpt-5.4","effort":"high"}"#.utf8).write(to: directory.appendingPathComponent("preferences.json"))
         var prefs = try await DocumentStore(directory: directory).loadPreferences()
         XCTAssertEqual(prefs.model, "gpt-5.4"); XCTAssertEqual(prefs.effort, "high"); XCTAssertTrue(prefs.disabledRules.isEmpty)
+        XCTAssertEqual(prefs.writingAction, .clarity)
+        XCTAssertTrue(prefs.showWritingChanges)
         prefs.disabledRules.insert("local.spaces")
         XCTAssertTrue(LocalRules.analyze(WritingDocument(text: "two  spaces"), preferences: prefs).isEmpty)
     }

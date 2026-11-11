@@ -88,6 +88,8 @@ public struct WritingPreferences: Codable, Equatable, Sendable {
     public var voiceEnabled = false
     public var model = "gpt-5.6-terra"
     public var effort = "medium"
+    public var writingAction: WritingAction = .clarity
+    public var showWritingChanges = true
     public var maxOutputTokens = 4096
     public var timeoutSeconds = 90
     public var maxInputCharacters = 24000

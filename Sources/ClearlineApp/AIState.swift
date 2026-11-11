@@ -26,8 +26,8 @@ final class AISession: ObservableObject, Identifiable {
     @Published var applied = false
     private var task: Task<Void, Never>?
     private var generation = UUID()
-    init(original: String, documentID: UUID?, revision: Int?, range: UTF16Range, action: WritingAction, preferences: WritingPreferences, external: ExternalSelection? = nil) {
-        self.original = original; self.documentID = documentID; self.revision = revision; self.range = range; self.action = action
+    init(original: String, documentID: UUID?, revision: Int?, range: UTF16Range, action: WritingAction? = nil, preferences: WritingPreferences, external: ExternalSelection? = nil) {
+        self.original = original; self.documentID = documentID; self.revision = revision; self.range = range; self.action = action ?? preferences.writingAction
         self.model = preferences.model; self.effort = ModelCapability.capability(for: preferences.model).validatedEffort(preferences.effort); self.external = external
     }
     func changeModel(_ id: String) {
@@ -120,6 +120,27 @@ final class AISession: ObservableObject, Identifiable {
 }
 
 extension AppState {
+    func setWritingAction(_ action: WritingAction, session: AISession) {
+        session.action = action
+        preferences.writingAction = action
+        preferencesChanged(reanalyze: false)
+    }
+    func setWritingModel(_ model: String, session: AISession) {
+        session.changeModel(model)
+        preferences.model = session.model
+        preferences.effort = session.effort
+        preferencesChanged(reanalyze: false)
+    }
+    func setWritingEffort(_ effort: String, session: AISession) {
+        session.effort = ModelCapability.capability(for: session.model).validatedEffort(effort)
+        preferences.model = session.model
+        preferences.effort = session.effort
+        preferencesChanged(reanalyze: false)
+    }
+    func setShowWritingChanges(_ show: Bool) {
+        preferences.showWritingChanges = show
+        preferencesChanged(reanalyze: false)
+    }
     func makeProvider() throws -> any WritingProvider {
         guard let key = try KeychainCredential.read() else { throw ProviderError.missingKey }
         let report: @Sendable (String, TokenUsage) async -> Void = { [weak self] model, usage in
@@ -138,12 +159,18 @@ extension AppState {
             if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
         } catch { availableModels = []; modelStatus = error.localizedDescription }
     }
-    func startAI(_ action: WritingAction = .clarity, wholeDocument: Bool = false, paragraph: Bool = false) {
-        guard let document = current else { return }
-        let range = paragraph ? UTF16Range((document.text as NSString).paragraphRange(for: selection)) : !wholeDocument && selection.length > 0 ? UTF16Range(selection) : UTF16Range(0, document.text.utf16.count)
-        guard let source = try? EditEngine.substring(document.text, range: range) else { return }
+    func startAI(_ action: WritingAction? = nil, wholeDocument: Bool = false, paragraph: Bool = false) {
+        guard let session = makeWritingSession(action, selection: selection, wholeDocument: wholeDocument, paragraph: paragraph) else { return }
         aiSession?.cancel()
-        aiSession = AISession(original: source, documentID: document.id, revision: document.revision, range: range, action: action, preferences: preferences)
+        aiSession = session
+    }
+    func makeWritingSession(_ action: WritingAction? = nil, selection: NSRange, wholeDocument: Bool = false, paragraph: Bool = false) -> AISession? {
+        guard let document = current, selection.location != NSNotFound,
+              selection.location <= document.text.utf16.count,
+              selection.length <= document.text.utf16.count - selection.location else { return nil }
+        let range = paragraph ? UTF16Range((document.text as NSString).paragraphRange(for: selection)) : !wholeDocument && selection.length > 0 ? UTF16Range(selection) : UTF16Range(0, document.text.utf16.count)
+        guard let source = try? EditEngine.substring(document.text, range: range) else { return nil }
+        return AISession(original: source, documentID: document.id, revision: document.revision, range: range, action: action, preferences: preferences)
     }
     func analyzeCloud(_ document: WritingDocument, generation: UUID) async {
         guard current?.id == document.id, current?.revision == document.revision, !paused else { return }
