@@ -5,6 +5,115 @@ import AppKit
 
 final class NativeTests: XCTestCase {
     @MainActor
+    func testQuickWritingMenuUsesSavedSettingsAndCapturedSelection() throws {
+        let state = AppState(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), autoload: false)
+        let document = WritingDocument(text: "Before 😀 selected text. After.")
+        state.library.documents = [document]; state.library.selectedID = document.id
+        state.preferences.writingAction = .friendly
+        state.preferences.model = "gpt-6-astra"; state.preferences.effort = "high"
+        let view = ClearlineTextView(); view.string = document.text; view.state = state
+        state.editor.textView = view; state.editor.documentID = document.id
+        let selection = (document.text as NSString).range(of: "😀 selected text.")
+        // The published selection may still be awaiting the delegate's asynchronous update.
+        state.selection = NSRange(location: 0, length: 0)
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "")
+        view.addWritingItems(to: menu, selection: selection)
+        XCTAssertEqual(menu.items.first?.title, "Make friendlier — Selection")
+        XCTAssertEqual(menu.items.last?.title, "Copy")
+        let session = try XCTUnwrap(menu.items.first?.representedObject as? AISession)
+        XCTAssertEqual(session.original, "😀 selected text.")
+        XCTAssertEqual(session.range.nsRange, selection)
+        XCTAssertEqual(session.model, "gpt-6-astra")
+        XCTAssertEqual(session.effort, "high")
+        XCTAssertNil(state.aiSession, "Opening the context menu must not open the full dialog")
+        let submenu = try XCTUnwrap(menu.items[1].submenu)
+        XCTAssertEqual(submenu.items.filter { $0.state == .on }.map(\.title), ["Make friendlier"])
+        XCTAssertEqual(submenu.items.first?.title, "Make friendlier")
+        XCTAssertEqual(Set(submenu.items.map(\.title)), Set(WritingAction.allCases.filter { $0 != .voice }.map(\.rawValue)))
+        view.setSelectedRange(NSRange(location: 0, length: 0))
+        session.result = try OpenAIWire.parseResult(Data(#"{"text":"Rewritten.","explanation":"","tone":"","warnings":[],"recommendations":[],"edits":[]}"#.utf8))
+        session.apply(state: state)
+        XCTAssertTrue(session.applied)
+        XCTAssertEqual(view.string, "Before Rewritten. After.")
+        view.undoManager?.undo()
+        XCTAssertEqual(view.string, document.text)
+    }
+
+    @MainActor
+    func testQuickWritingWithoutSelectionUsesWholeDocumentAndRejectsStaleProposal() throws {
+        let state = AppState(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), autoload: false)
+        let document = WritingDocument(text: "First paragraph.\n\nSecond paragraph.")
+        state.library.documents = [document]; state.library.selectedID = document.id
+        let view = ClearlineTextView(); view.string = document.text; view.state = state
+        state.editor.textView = view; state.editor.documentID = document.id
+        let menu = NSMenu()
+        view.addWritingItems(to: menu, selection: NSRange(location: 20, length: 0))
+        XCTAssertEqual(menu.items.first?.title, "Improve clarity — Document")
+        let session = try XCTUnwrap(menu.items.first?.representedObject as? AISession)
+        XCTAssertEqual(session.original, document.text)
+        XCTAssertEqual(session.range.nsRange, NSRange(location: 0, length: document.text.utf16.count))
+        session.result = try OpenAIWire.parseResult(Data(#"{"text":"New proposal","explanation":"","tone":"","warnings":[],"recommendations":[],"edits":[]}"#.utf8))
+        state.library.documents[0].update(text: "Changed while generating")
+        session.apply(state: state)
+        XCTAssertFalse(session.applied)
+        XCTAssertTrue(session.stale)
+        XCTAssertEqual(state.current?.text, "Changed while generating")
+    }
+
+    @MainActor
+    func testWritingSessionRejectsInvalidSelection() {
+        let state = AppState(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString), autoload: false)
+        let document = WritingDocument(text: "Text")
+        state.library.documents = [document]; state.library.selectedID = document.id
+        XCTAssertNil(state.makeWritingSession(selection: NSRange(location: NSNotFound, length: 0)))
+        XCTAssertNil(state.makeWritingSession(selection: NSRange(location: 3, length: 10)))
+    }
+
+    @MainActor
+    func testWritingChoicesPersistWithoutGeneratingAndRestoreInNewSessions() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let state = AppState(directory: directory, autoload: false)
+        let document = WritingDocument(text: "A message")
+        state.library.documents = [document]; state.library.selectedID = document.id
+        state.startAI()
+        let session = try XCTUnwrap(state.aiSession)
+        state.setWritingAction(.friendly, session: session)
+        state.setWritingModel("gpt-6-astra", session: session)
+        state.setWritingEffort("high", session: session)
+        state.setShowWritingChanges(false)
+        state.startAI()
+        XCTAssertEqual(state.aiSession?.action, .friendly)
+        XCTAssertEqual(state.aiSession?.model, "gpt-6-astra")
+        XCTAssertEqual(state.aiSession?.effort, "high")
+
+        // The picker changes autosave even if the user closes without generating.
+        try await Task.sleep(for: .milliseconds(600))
+        let restored = AppState(directory: directory, autoload: false)
+        restored.preferences = try await restored.store.loadPreferences()
+        XCTAssertEqual(restored.preferences.writingAction, .friendly)
+        XCTAssertFalse(restored.preferences.showWritingChanges)
+        let next = AISession(original: "Next message", documentID: nil, revision: nil, range: UTF16Range(0, 12), preferences: restored.preferences)
+        XCTAssertEqual(next.action, .friendly)
+        XCTAssertEqual(next.model, "gpt-6-astra")
+        XCTAssertEqual(next.effort, "high")
+
+        state.startAI(.summarize)
+        XCTAssertEqual(state.aiSession?.action, .summarize)
+        state.startAI()
+        XCTAssertEqual(state.aiSession?.action, .friendly)
+
+        state.setWritingModel("gpt-4.1-mini", session: next)
+        XCTAssertEqual(state.preferences.effort, "")
+        state.setWritingModel("gpt-6-astra", session: next)
+        XCTAssertEqual(state.preferences.effort, "medium")
+        try await Task.sleep(for: .milliseconds(600))
+        let normalized = try await state.store.loadPreferences()
+        XCTAssertEqual(normalized.model, "gpt-6-astra")
+        XCTAssertEqual(normalized.effort, "medium")
+    }
+    @MainActor
     func testWritingSessionNormalizesEffortWhenOpeningAndSwitchingModels() {
         var prefs = WritingPreferences(); prefs.model = "gpt-5.6-terra"; prefs.effort = ""
         let session = AISession(original: "Text", documentID: nil, revision: nil, range: UTF16Range(0, 4), action: .clarity, preferences: prefs)

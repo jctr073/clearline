@@ -5,7 +5,6 @@ struct AIReviewView: View {
     @ObservedObject var state: AppState
     @ObservedObject var session: AISession
     let close: () -> Void
-    @State private var showDiff = true
     private var capability: ModelCapability? { state.availableModels.first { $0.id == session.model } }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -18,12 +17,12 @@ struct AIReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .top) {
-                        Picker("Action", selection: $session.action) { ForEach(WritingAction.allCases.filter { $0 != .voice }) { Text($0.rawValue).tag($0) } }.frame(maxWidth: .infinity)
-                        WritingModelPicker(available: state.availableModels, selection: Binding(get: { session.model }, set: { session.changeModel($0) }))
+                        Picker("Action", selection: Binding(get: { session.action }, set: { state.setWritingAction($0, session: session) })) { ForEach(WritingAction.allCases.filter { $0 != .voice }) { Text($0.rawValue).tag($0) } }.frame(maxWidth: .infinity)
+                        WritingModelPicker(available: state.availableModels, selection: Binding(get: { session.model }, set: { state.setWritingModel($0, session: session) }))
                             .frame(maxWidth: .infinity)
                     }.disabled(session.running)
                     HStack {
-                        ReasoningEffortPicker(model: session.model, selection: $session.effort)
+                        ReasoningEffortPicker(model: session.model, selection: Binding(get: { session.effort }, set: { state.setWritingEffort($0, session: session) }))
                             .frame(width: 280).disabled(session.running)
                         Spacer()
                         Text("Higher effort can increase response time and cost.").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -51,8 +50,8 @@ struct AIReviewView: View {
                     }
                     if let result = session.result {
                         Divider()
-                        HStack { Text("PROPOSAL").font(.system(size: 9, weight: .semibold)).tracking(1.2); Spacer(); Toggle("Show changes", isOn: $showDiff).toggleStyle(.switch).controlSize(.mini).font(.caption) }
-                        if showDiff && !session.action.analysisOnly { diffText.font(.system(size: 14)).lineSpacing(6).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(16).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8)) }
+                        HStack { Text("PROPOSAL").font(.system(size: 9, weight: .semibold)).tracking(1.2); Spacer(); Toggle("Show changes", isOn: Binding(get: { state.preferences.showWritingChanges }, set: { state.setShowWritingChanges($0) })).toggleStyle(.switch).controlSize(.mini).font(.caption) }
+                        if state.preferences.showWritingChanges && !session.action.analysisOnly { diffText.font(.system(size: 14)).lineSpacing(6).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(16).background(Palette.surface, in: RoundedRectangle(cornerRadius: 8)) }
                         else { Text(result.text).font(.system(size: 14)).lineSpacing(6).textSelection(.enabled) }
                         if session.action.analysisOnly {
                             Text(result.explanation).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)

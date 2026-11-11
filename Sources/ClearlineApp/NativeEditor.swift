@@ -175,8 +175,80 @@ struct NativeEditor: NSViewRepresentable {
     }
 }
 
-final class ClearlineTextView: NSTextView {
+final class ClearlineTextView: NSTextView, NSPopoverDelegate {
     weak var state: AppState?
+    private var contextSelection: NSRange?
+    private var writingPopover: NSPopover?
+    private var quickWritingSession: AISession?
+    private var writingAnchor = NSRect.zero
+
+    override func rightMouseDown(with event: NSEvent) {
+        // AppKit can select the word under a right-click. Use the user's existing selection.
+        contextSelection = selectedRange()
+        defer { contextSelection = nil }
+        super.rightMouseDown(with: event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let selection = contextSelection ?? selectedRange()
+        let menu = super.menu(for: event) ?? NSMenu()
+        setSelectedRange(selection)
+        let point = convert(event.locationInWindow, from: nil)
+        writingAnchor = NSRect(x: point.x, y: point.y, width: 1, height: 1)
+        addWritingItems(to: menu, selection: selection)
+        return menu
+    }
+
+    func addWritingItems(to menu: NSMenu, selection: NSRange) {
+        guard let state, state.editor.documentID == state.current?.id,
+              state.current?.text == string, !hasMarkedText(), !string.isEmpty else { return }
+        let scope = selection.length > 0 ? "Selection" : "Document"
+        func item(for action: WritingAction, title: String) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(quickWrite(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = state.makeWritingSession(action, selection: selection)
+            item.isEnabled = item.representedObject != nil
+            return item
+        }
+        let saved = state.preferences.writingAction
+        let primary = item(for: saved, title: "\(saved.rawValue) — \(scope)")
+        primary.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        menu.insertItem(primary, at: 0)
+        let submenu = NSMenu(title: "Writing actions")
+        let actions = [saved] + WritingAction.allCases.filter { $0 != .voice && $0 != saved }
+        for action in actions {
+            let choice = item(for: action, title: action.rawValue)
+            choice.state = action == saved ? .on : .off
+            submenu.addItem(choice)
+        }
+        let parent = NSMenuItem(title: "Writing actions for \(scope.lowercased())", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        menu.insertItem(parent, at: 1)
+        menu.insertItem(.separator(), at: 2)
+    }
+
+    @objc private func quickWrite(_ sender: NSMenuItem) {
+        guard let state, let session = sender.representedObject as? AISession,
+              state.current?.id == session.documentID, state.current?.revision == session.revision,
+              state.current?.text == string, !hasMarkedText(), window != nil else { return }
+        writingPopover?.close()
+        state.setWritingAction(session.action, session: session)
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView: QuickWritingView(state: state, session: session, close: { [weak self] in self?.writingPopover?.close() }))
+        writingPopover = popover
+        quickWritingSession = session
+        popover.show(relativeTo: writingAnchor, of: self, preferredEdge: .maxX)
+        if session.action != .translate && session.action != .custom { session.run(state: state) }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        quickWritingSession?.cancel()
+        quickWritingSession = nil
+        writingPopover = nil
+    }
+
     private var undoObservers: [NSObjectProtocol] = []
     private lazy var documentUndoManager: UndoManager = {
         let manager = UndoManager()
