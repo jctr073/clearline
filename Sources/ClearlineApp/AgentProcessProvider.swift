@@ -10,10 +10,17 @@ struct AgentProcessProvider: WritingProvider {
         let payload: [String: Any] = ["api_key": key, "request": try JSONSerialization.jsonObject(with: body), "timeout": request.configuration.timeout]
         let input = try JSONSerialization.data(withJSONObject: payload)
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let python = ProcessInfo.processInfo.environment["CLEARLINE_AGENT_PYTHON"] ?? home.appendingPathComponent("Library/Application Support/Clearline/AgentRuntime/bin/python3").path
+        var python = home.appendingPathComponent("Library/Application Support/Clearline/AgentRuntime/bin/python3").path
+        #if DEBUG
+        // Development only: a release build must not take its interpreter from the environment.
+        if let override = ProcessInfo.processInfo.environment["CLEARLINE_AGENT_PYTHON"] { python = override }
+        #endif
         let script = Bundle.main.resourceURL?.appendingPathComponent("agent-service/agent.py")
         guard FileManager.default.isExecutableFile(atPath: python), let script, FileManager.default.fileExists(atPath: script.path) else {
             throw ProviderError.service("Install the optional OpenAI Agents runtime using scripts/install-agent-runtime.sh, then relaunch. Or turn off the Agents SDK option to use the native Responses client.")
+        }
+        guard AgentRuntime.isTrusted(python: python) else {
+            throw ProviderError.service("The OpenAI Agents runtime has unsafe ownership or permissions, so your key was not sent to it. Reinstall it using scripts/install-agent-runtime.sh, or turn off the Agents SDK option.")
         }
         let runner = ChildProcess()
         let data = try await withTaskCancellationHandler {
@@ -35,6 +42,22 @@ struct AgentProcessProvider: WritingProvider {
     }
 }
 
+enum AgentRuntime {
+    /// The interpreter receives the API key. Refuse one that another account could have
+    /// replaced: the resolved binary, its bin directory, and the environment root must be
+    /// owned by this user or root and not group- or world-writable. This cannot stop a
+    /// process already running as this user.
+    static func isTrusted(python: String, uid: uid_t = getuid()) -> Bool {
+        let link = URL(fileURLWithPath: python)
+        let bin = link.deletingLastPathComponent()
+        return [link.resolvingSymlinksInPath().path, bin.path, bin.deletingLastPathComponent().path].allSatisfy { path in
+            var info = stat()
+            guard stat(path, &info) == 0 else { return false }
+            return (info.st_uid == uid || info.st_uid == 0) && info.st_mode & (S_IWGRP | S_IWOTH) == 0
+        }
+    }
+}
+
 private final class ChildProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
@@ -42,7 +65,7 @@ private final class ChildProcess: @unchecked Sendable {
     func cancel() { lock.lock(); cancelled = true; let active = process; lock.unlock(); if active?.isRunning == true { active?.terminate() } }
     func run(python: String, script: String, input: Data) throws -> Data {
         let child = Process(), stdin = Pipe(), stdout = Pipe()
-        child.executableURL = URL(fileURLWithPath: python); child.arguments = [script]
+        child.executableURL = URL(fileURLWithPath: python); child.arguments = ["-I", script] // isolated: no PYTHON* variables, user site, or script directory on sys.path
         child.environment = ["PATH": "/usr/bin:/bin", "HOME": FileManager.default.homeDirectoryForCurrentUser.path, "PYTHONDONTWRITEBYTECODE": "1"]
         child.standardInput = stdin; child.standardOutput = stdout; child.standardError = FileHandle.nullDevice
         lock.lock()

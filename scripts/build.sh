@@ -37,6 +37,13 @@ cp agent-service/agent.py "$app/Contents/Resources/agent-service/agent.py"
 python3 scripts/package-info.py "$app/Contents/Info.plist"
 swift scripts/make-icon.swift .build/AppIcon.iconset
 iconutil -c icns .build/AppIcon.iconset -o "$app/Contents/Resources/AppIcon.icns"
-codesign --force --sign "$sign_identity" "$app"
+# Hardened runtime: without it any same-user process can inject a library
+# (DYLD_INSERT_LIBRARIES) and inherit this app's Keychain and Accessibility access.
+codesign --force --options runtime --sign "$sign_identity" "$app"
 codesign --verify --deep --strict "$app"
+signature="$(codesign --display --verbose=2 "$app" 2>&1)"
+if [[ ! "$signature" =~ flags=[^[:space:]]*runtime ]]; then
+    printf 'Refusing to ship %s: the signature lacks the hardened runtime flag.\n' "$app" >&2
+    exit 1
+fi
 printf 'Built %s\n' "$app"

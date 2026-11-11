@@ -51,7 +51,11 @@ final class AppState: ObservableObject {
     private var analysisGeneration = UUID()
     private var lastHistory: [UUID: Date] = [:]
     init(directory: URL? = nil, autoload: Bool = true) {
+        #if DEBUG
         let override = ProcessInfo.processInfo.environment["CLEARLINE_DATA_DIR"]
+        #else
+        let override: String? = nil // release builds never take their data location from the environment
+        #endif
         let root = directory ?? override.map { URL(fileURLWithPath: $0) } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(Brand.name)
         store = DocumentStore(directory: root)
         usageStore = UsageStore(directory: root)
