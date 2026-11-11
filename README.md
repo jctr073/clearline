@@ -102,13 +102,17 @@ The native client uses OpenAI's **Responses API**, streamed over HTTPS, with str
 
 The desktop stays in Swift. An optional Python worker provides the official OpenAI **Agents SDK** `Agent`/`Runner` framework behind the same Swift `WritingProvider` protocol. It uses a private stdin/stdout pipe, not an HTTP listener. It receives the configured key only in memory over that pipe, disables tracing, has no file/browser tools or handoffs, enforces structured output, and exits after one operation. The native Responses client remains available without Python.
 
-Use Python **3.10 or later** (macOS's bundled Python 3.9 is insufficient):
+Use Python **3.11 or later** (macOS's bundled Python 3.9 is insufficient):
 
 ```sh
 CLEARLINE_PYTHON=/absolute/path/to/python3.11 ./scripts/install-agent-runtime.sh
 ```
 
-The default installation is `~/Library/Application Support/Clearline/AgentRuntime`. Enable **Use local OpenAI Agents SDK runtime** in settings. Development overrides `CLEARLINE_AGENT_RUNTIME` (installer) and `CLEARLINE_AGENT_PYTHON` (app process) are available; Finder does not inherit them. Use the default installation for Finder launches. Dependencies are pinned in `agent-service/requirements.txt` to the versions actually tested.
+The default installation is `~/Library/Application Support/Clearline/AgentRuntime`. Enable **Use local OpenAI Agents SDK runtime** in settings. Development overrides `CLEARLINE_AGENT_RUNTIME` (installer) and `CLEARLINE_AGENT_PYTHON` (app process, **debug builds only**) are available; Finder does not inherit them. Use the default installation for Finder launches.
+
+The worker receives your API key, so the app refuses to start it unless the interpreter, its `bin` directory, and the environment root are owned by you (or root) and are not group- or world-writable. The installer creates the environment with mode 700, and the interpreter runs in isolated mode (`-I`). This does not protect against software already running as your user; leave the option off if that matters to you.
+
+Top-level dependencies are pinned in `agent-service/requirements.in` to the versions actually tested. `agent-service/requirements.txt` is the generated lock: every dependency, including transitive ones, with hashes, installed with `pip --require-hashes`. Regenerate it with the command in its header after changing `requirements.in`.
 
 Run isolated SDK tests, without credentials:
 
@@ -147,13 +151,13 @@ Autosave debounces for 250 ms and writes atomically on a storage actor. Normal q
 
 For a manual backup, quit Clearline and copy the entire data folder (or use Time Machine). Restore while the app is closed. A document/history deletion updates automatic recovery copies and removes damaged-library copies, so deleted content is not retained there; separately managed/Time Machine backups remain your responsibility. Dictionary and voice controls delete those records. There is no telemetry or cloud sync; API usage aggregates stay on this Mac.
 
-`CLEARLINE_DATA_DIR=/absolute/test/path` isolates local development data when launching from a terminal.
+`CLEARLINE_DATA_DIR=/absolute/test/path` isolates local development data when launching a debug build from a terminal. Release builds ignore it.
 
 ## Distribution
 
 The chosen path is direct distribution with **Developer ID**, not the Mac App Store: Apple lists assistive Accessibility APIs among [functionality incompatible with App Sandbox](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox). This app is not App-Sandbox enabled. It still depends on explicit macOS Accessibility permission and Keychain access.
 
-The default local bundle uses Apple Development signing. Developer ID signing, hardened-runtime validation, notarization, stapling, and clean-machine Gatekeeper testing have **not** been performed. With your own signing identity and existing notary Keychain profile, the intended release steps are:
+The default local bundle uses Apple Development signing with the hardened runtime enabled; `build.sh` fails if the signature lacks it. Developer ID signing, notarization, stapling, and clean-machine Gatekeeper testing have **not** been performed. With your own signing identity and existing notary Keychain profile, the intended release steps are:
 
 ```sh
 ./scripts/build.sh release

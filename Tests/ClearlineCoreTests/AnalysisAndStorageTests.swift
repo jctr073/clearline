@@ -22,6 +22,13 @@ final class AnalysisAndStorageTests: XCTestCase {
         XCTAssertTrue(issues.contains { $0.category == .clarity && $0.replacement == "To" && $0.optional })
         XCTAssertTrue(issues.contains { $0.category == .repetition })
     }
+    func testCapitalIRuleFlagsOnlyLowercasePronoun() {
+        let issues = LocalRules.analyze(WritingDocument(text: "Stronger than I expected. I had to ask, and i came away unsure."), preferences: .init())
+            .filter { $0.rule == "local.capital-i" }
+        XCTAssertEqual(issues.count, 1)
+        XCTAssertEqual(issues.first?.original, "i"); XCTAssertEqual(issues.first?.replacement, "I")
+        XCTAssertEqual(issues.first?.range.location, 44)
+    }
     func testProtectedSpansExcluded() {
         let text = "`in order to`\n```\na  b\n```\n“in order to”\nhttps://test.example.com/a\nIn order to write."
         let issues = LocalRules.analyze(WritingDocument(text: text), preferences: .init())
