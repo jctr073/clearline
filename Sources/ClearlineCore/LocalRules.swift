@@ -38,7 +38,8 @@ public enum LocalRules {
         rule(#"\b([\p{L}]+)\s+\1\b"#, "$1", .repetition, "repeated-word", "This word appears twice in a row. Check whether the repetition is intentional.", optional: true)
         rule(#"[ \t]+([,;:!?])"#, "$1", .punctuation, "space-before-punctuation", "Remove the space before this punctuation mark.")
         guard preferences.language.hasPrefix("en") else { return output }
-        rule(#"\bi\b"#, "I", .grammar, "capital-i", "Capitalize the English pronoun I.")
+        // Rules match case-insensitively; (?-i) keeps this one from flagging an already-capitalized "I".
+        rule(#"(?-i)\bi\b"#, "I",.grammar, "capital-i", "Capitalize the English pronoun I.")
         for (phrase, replacement) in [("in order to", "to"), ("at this point in time", "now"), ("due to the fact that", "because"), ("a large number of", "many"), ("each and every", "each"), ("very unique", "unique"), ("in the event that", "if"), ("for the purpose of", "for")] {
             rule("\\b" + phrase + "\\b", replacement, .clarity, "wordiness", "A shorter phrase may make this sentence easier to read. This is a style preference.", optional: true)
         }
