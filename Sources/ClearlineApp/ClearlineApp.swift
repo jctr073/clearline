@@ -38,6 +38,8 @@ struct ClearlineApp: App {
                 }.disabled(state.current?.format != .md || state.isMarkdownPreview || state.tableSession != nil)
             }
             CommandMenu("Writing") {
+                Button("Quick edit…") { (state.editor.textView as? ClearlineTextView)?.quickEdit() }.keyboardShortcut("k")
+                    .disabled(state.current == nil || state.isMarkdownPreview)
                 Button("Writing tools…") { state.startAI() }.keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Rewrite current paragraph…") { state.startAI(.clarity, paragraph: true) }
                 Button("Rewrite entire document…") { state.startAI(.clarity, wholeDocument: true) }

@@ -199,9 +199,15 @@ final class ClearlineTextView: NSTextView, NSPopoverDelegate {
         return menu
     }
 
+    static let quickEditTag = 1
+
+    private var canOfferWriting: Bool {
+        guard let state else { return false }
+        return state.editor.documentID == state.current?.id && state.current?.text == string && !hasMarkedText() && !string.isEmpty
+    }
+
     func addWritingItems(to menu: NSMenu, selection: NSRange) {
-        guard let state, state.editor.documentID == state.current?.id,
-              state.current?.text == string, !hasMarkedText(), !string.isEmpty else { return }
+        guard let state, canOfferWriting else { return }
         let scope = selection.length > 0 ? "Selection" : "Document"
         func item(for action: WritingAction, title: String) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: #selector(quickWrite(_:)), keyEquivalent: "")
@@ -210,10 +216,15 @@ final class ClearlineTextView: NSTextView, NSPopoverDelegate {
             item.isEnabled = item.representedObject != nil
             return item
         }
+        // Quick edit asks for instructions first and leaves the saved action alone.
+        let quick = item(for: .custom, title: "Quick edit — \(scope)…")
+        quick.tag = Self.quickEditTag
+        quick.image = NSImage(systemSymbolName: "pencil.line", accessibilityDescription: nil)
+        menu.insertItem(quick, at: 0)
         let saved = state.preferences.writingAction
         let primary = item(for: saved, title: "\(saved.rawValue) — \(scope)")
         primary.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
-        menu.insertItem(primary, at: 0)
+        menu.insertItem(primary, at: 1)
         let submenu = NSMenu(title: "Writing actions")
         let actions = [saved] + WritingAction.allCases.filter { $0 != .voice && $0 != saved }
         for action in actions {
@@ -223,27 +234,59 @@ final class ClearlineTextView: NSTextView, NSPopoverDelegate {
         }
         let parent = NSMenuItem(title: "Writing actions for \(scope.lowercased())", action: nil, keyEquivalent: "")
         parent.submenu = submenu
-        menu.insertItem(parent, at: 1)
-        menu.insertItem(.separator(), at: 2)
+        menu.insertItem(parent, at: 2)
+        menu.insertItem(.separator(), at: 3)
     }
 
     @objc private func quickWrite(_ sender: NSMenuItem) {
-        guard let state, let session = sender.representedObject as? AISession,
-              state.current?.id == session.documentID, state.current?.revision == session.revision,
+        guard let session = sender.representedObject as? AISession else { return }
+        presentWriting(session, quickEdit: sender.tag == Self.quickEditTag)
+    }
+
+    /// Opens the quick edit prompt for the current selection, or the whole document without one.
+    func quickEdit() {
+        guard let state, canOfferWriting, window != nil,
+              let session = state.makeWritingSession(.custom, selection: selectedRange()) else { NSSound.beep(); return }
+        presentWriting(session, quickEdit: true)
+    }
+
+    private func presentWriting(_ session: AISession, quickEdit: Bool) {
+        guard let state, state.current?.id == session.documentID, state.current?.revision == session.revision,
               state.current?.text == string, !hasMarkedText(), window != nil else { return }
         writingPopover?.close()
-        state.setWritingAction(session.action, session: session)
+        if !quickEdit { state.setWritingAction(session.action, session: session) }
         let popover = NSPopover()
         popover.behavior = .transient
         popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: QuickWritingView(state: state, session: session, close: { [weak self] in self?.writingPopover?.close() }))
+        let controller = NSHostingController(rootView: QuickWritingView(state: state, session: session, quickEdit: quickEdit, close: { [weak popover] in popover?.close() }))
+        controller.sizingOptions = .preferredContentSize
+        popover.contentViewController = controller
         writingPopover = popover
         quickWritingSession = session
-        popover.show(relativeTo: writingAnchor, of: self, preferredEdge: .maxX)
+        if quickEdit {
+            popover.show(relativeTo: quickEditAnchor(for: selectedRange()), of: self, preferredEdge: .maxY)
+        } else {
+            popover.show(relativeTo: writingAnchor, of: self, preferredEdge: .maxX)
+        }
         if session.action != .translate && session.action != .custom { session.run(state: state) }
     }
 
+    /// The visible part of the selection, or the insertion point, so the prompt sits beside the text it changes.
+    func quickEditAnchor(for range: NSRange) -> NSRect {
+        var rect = NSRect.zero
+        if let layoutManager, let textContainer {
+            let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+                .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        }
+        rect.size.width = max(rect.width, 1); rect.size.height = max(rect.height, 1)
+        let visible = rect.intersection(visibleRect)
+        return visible.isEmpty ? NSRect(x: visibleRect.midX, y: visibleRect.midY, width: 1, height: 1) : visible
+    }
+
     func popoverDidClose(_ notification: Notification) {
+        // Replacing one popover with another closes the old one after the new one is stored.
+        guard notification.object as? NSPopover === writingPopover else { return }
         quickWritingSession?.cancel()
         quickWritingSession = nil
         writingPopover = nil
