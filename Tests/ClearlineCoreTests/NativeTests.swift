@@ -19,15 +19,23 @@ final class NativeTests: XCTestCase {
         let menu = NSMenu()
         menu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "")
         view.addWritingItems(to: menu, selection: selection)
-        XCTAssertEqual(menu.items.first?.title, "Make friendlier — Selection")
+        XCTAssertEqual(menu.items.first?.title, "Quick edit — Selection…")
+        XCTAssertEqual(menu.items.first?.tag, ClearlineTextView.quickEditTag)
+        let quick = try XCTUnwrap(menu.items.first?.representedObject as? AISession)
+        XCTAssertEqual(quick.action, .custom)
+        XCTAssertEqual(quick.original, "😀 selected text.")
+        XCTAssertEqual(quick.range.nsRange, selection)
+        XCTAssertEqual(state.preferences.writingAction, .friendly, "Quick edit must not replace the saved action")
+        XCTAssertEqual(menu.items[1].title, "Make friendlier — Selection")
+        XCTAssertEqual(menu.items[1].tag, 0)
         XCTAssertEqual(menu.items.last?.title, "Copy")
-        let session = try XCTUnwrap(menu.items.first?.representedObject as? AISession)
+        let session = try XCTUnwrap(menu.items[1].representedObject as? AISession)
         XCTAssertEqual(session.original, "😀 selected text.")
         XCTAssertEqual(session.range.nsRange, selection)
         XCTAssertEqual(session.model, "gpt-6-astra")
         XCTAssertEqual(session.effort, "high")
         XCTAssertNil(state.aiSession, "Opening the context menu must not open the full dialog")
-        let submenu = try XCTUnwrap(menu.items[1].submenu)
+        let submenu = try XCTUnwrap(menu.items[2].submenu)
         XCTAssertEqual(submenu.items.filter { $0.state == .on }.map(\.title), ["Make friendlier"])
         XCTAssertEqual(submenu.items.first?.title, "Make friendlier")
         XCTAssertEqual(Set(submenu.items.map(\.title)), Set(WritingAction.allCases.filter { $0 != .voice }.map(\.rawValue)))
@@ -49,8 +57,9 @@ final class NativeTests: XCTestCase {
         state.editor.textView = view; state.editor.documentID = document.id
         let menu = NSMenu()
         view.addWritingItems(to: menu, selection: NSRange(location: 20, length: 0))
-        XCTAssertEqual(menu.items.first?.title, "Improve clarity — Document")
-        let session = try XCTUnwrap(menu.items.first?.representedObject as? AISession)
+        XCTAssertEqual(menu.items.first?.title, "Quick edit — Document…")
+        XCTAssertEqual(menu.items[1].title, "Improve clarity — Document")
+        let session = try XCTUnwrap(menu.items[1].representedObject as? AISession)
         XCTAssertEqual(session.original, document.text)
         XCTAssertEqual(session.range.nsRange, NSRange(location: 0, length: document.text.utf16.count))
         session.result = try OpenAIWire.parseResult(Data(#"{"text":"New proposal","explanation":"","tone":"","warnings":[],"recommendations":[],"edits":[]}"#.utf8))
@@ -59,6 +68,21 @@ final class NativeTests: XCTestCase {
         XCTAssertFalse(session.applied)
         XCTAssertTrue(session.stale)
         XCTAssertEqual(state.current?.text, "Changed while generating")
+    }
+
+    @MainActor
+    func testQuickEditAnchorFollowsSelectionAndStaysVisible() {
+        let view = ClearlineTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.string = "First line.\nSecond line with a selection.\nThird line."
+        let selection = (view.string as NSString).range(of: "selection")
+        let anchor = view.quickEditAnchor(for: selection)
+        let caret = view.quickEditAnchor(for: NSRange(location: selection.location, length: 0))
+        XCTAssertGreaterThan(anchor.width, 1)
+        XCTAssertEqual(anchor.minX, caret.minX, accuracy: 1)
+        XCTAssertEqual(anchor.minY, caret.minY, accuracy: 1)
+        XCTAssertGreaterThan(anchor.minY, view.quickEditAnchor(for: NSRange(location: 0, length: 5)).minY)
+        XCTAssertTrue(view.visibleRect.contains(anchor))
+        XCTAssertGreaterThanOrEqual(caret.width, 1)
     }
 
     @MainActor
