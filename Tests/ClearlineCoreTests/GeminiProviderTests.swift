@@ -222,3 +222,39 @@ private final class GeminiFixture: URLProtocol {
     }
     override func stopLoading() {}
 }
+
+final class LiveModelListTests: XCTestCase {
+    func testOtherOpenAIModelsAreLiveFilteredAndNewestFirst() {
+        let discovered = ModelCapability.available([
+            "gpt-6-astra", "gpt-5.6-terra", "gpt-5.7", "gpt-5.6-terra-mini", "gpt-5.4", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "o4-mini", "o3",
+            "gpt-5.5-2026-04-23", "gpt-4-0613", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-audio", "gpt-realtime", "gpt-image-2",
+            "gpt-4o-mini-tts", "gpt-4o-mini-transcribe", "gpt-4o-search-preview", "gpt-5.3-codex", "o3-deep-research",
+            "text-embedding-3-large", "omni-moderation-latest", "whisper-1", "dall-e-3", "chatgpt-4o-latest", "future-model"
+        ])
+        XCTAssertEqual(ModelCapability.otherWritingModels(from: discovered).map(\.id),
+                       ["o4-mini", "o3", "gpt-5.7", "gpt-5.6-terra-mini", "gpt-5.4", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"])
+        XCTAssertEqual(ModelCapability.writingModels(from: discovered).map(\.id), ["gpt-6-astra", "gpt-5.6-terra"])
+    }
+    func testOtherGeminiModelsMatchTheRealListing() {
+        // generateContent-capable IDs returned by the live Gemini API on 2026-11-21.
+        let discovered = ModelCapability.available([
+            "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-preview-tts", "gemma-4-31b-it", "gemini-flash-latest",
+            "gemini-2.5-flash-lite", "gemini-2.5-flash-image", "gemini-3-flash-preview", "gemini-3.1-pro-preview",
+            "gemini-3.1-pro-preview-customtools", "gemini-3-pro-image", "gemini-nano-banana-2.1", "gemini-3.5-flash",
+            "gemini-omni-1.2-flash", "gemini-3.5-transcribe", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.8-flash-tts",
+            "gemini-4-hydrogen", "gemini-robotics-er-2-preview", "gemini-2.5-computer-use-preview-10-2025",
+            "gemini-2.0-flash-001", "gemini-3.1-flash-live-preview"
+        ])
+        XCTAssertEqual(ModelCapability.otherWritingModels(from: discovered).map(\.id), [
+            "gemini-omni-1.2-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.5-flash"
+        ])
+    }
+    func testUncataloguedLiveModelsUseAPIDefaultReasoning() throws {
+        let capability = ModelCapability.capability(for: "gemini-3.7-flash")
+        XCTAssertTrue(capability.efforts.isEmpty)
+        XCTAssertEqual(capability.vendor, .gemini)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: GeminiWire.body(WritingRequest(action: .clarity, text: "Hi.", instructions: "", preferences: .init(), configuration: try RequestConfiguration(model: "gemini-3.7-flash", effort: "")))) as? [String: Any])
+        XCTAssertNil((body["generationConfig"] as? [String: Any])?["thinkingConfig"])
+    }
+}

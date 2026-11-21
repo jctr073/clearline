@@ -41,6 +41,31 @@ public struct ModelCapability: Codable, Identifiable, Equatable, Sendable {
         let ids = Set(available.map(\.id))
         return writingModelIDs.filter { ids.contains($0) }.map { capability(for: $0) }
     }
+    /// Every other live-discovered model that looks like a general text model, in reverse
+    /// numeric name order (higher versions first). These use API-default reasoning: neither vendor's model listing declares
+    /// supported reasoning levels or structured-output compatibility.
+    public static func otherWritingModels(from available: [ModelCapability]) -> [ModelCapability] {
+        let curated = Set(writingModelIDs)
+        return available.filter { !curated.contains($0.id) && isLikelyTextModel($0.id) }
+            .sorted { $0.id.compare($1.id, options: .numeric) == .orderedDescending }
+    }
+    /// Name-based heuristic: drops audio, image, speech, embedding, agent, and tool-specific
+    /// variants, pinned snapshots, and legacy models without strict JSON Schema support.
+    public static func isLikelyTextModel(_ id: String) -> Bool {
+        let parts = Set(id.split(separator: "-").map(String.init))
+        let excluded: Set<String> = ["audio", "realtime", "image", "tts", "transcribe", "search", "codex", "embedding",
+                                     "moderation", "instruct", "research", "computer", "robotics", "live", "customtools", "banana"]
+        guard parts.isDisjoint(with: excluded),
+              id.range(of: #"-(\d{4}-\d{2}-\d{2}|\d{4}|\d{3})$"#, options: .regularExpression) == nil else { return false }
+        switch AIVendor.serving(id) {
+        case .gemini:
+            // Gemma on the Gemini API is not verified for system instructions and JSON Schema output.
+            return id.hasPrefix("gemini-")
+        case .openAI:
+            let legacy = id == "gpt-4" || id.hasPrefix("gpt-4-") || id.hasPrefix("gpt-3.5")
+            return !legacy && (id.hasPrefix("gpt-") || id.range(of: #"^o\d"#, options: .regularExpression) != nil)
+        }
+    }
     // The catalog supplies known settings, not an allowlist. /models does not
     // describe endpoint, structured-output, or reasoning compatibility.
     public static func capability(for id: String) -> ModelCapability {

@@ -90,7 +90,7 @@ struct SettingsView: View {
                 }))
                 ReasoningEffortPicker(model: state.preferences.model, selection: $state.preferences.effort)
                 Text("Higher reasoning effort may increase response time and cost. Each operation captures its settings when sent.").font(.caption).foregroundStyle(.secondary)
-                Text("Shows the latest main writing models available to your connected accounts.").font(.caption).foregroundStyle(.secondary)
+                Text("Lists recommended models first, then every other text model your connected accounts can use, loaded live from each provider. Models under “More” use the provider's default reasoning and haven't been verified for writing.").font(.caption).foregroundStyle(.secondary)
                 HStack { Text(state.modelStatus).font(.caption); Spacer(); Button("Refresh models") { Task { await state.refreshModels() } }.disabled(!state.hasKey) }
             }
             UsageSettingsView(state: state)

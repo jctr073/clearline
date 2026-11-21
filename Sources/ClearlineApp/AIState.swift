@@ -168,8 +168,8 @@ extension AppState {
                 guard let key = try KeychainCredential.read(vendor) else { continue }
                 let found = vendor == .gemini ? try await GeminiProvider(key: key).models() : try await OpenAIProvider(key: key).models()
                 models += found
-                let count = ModelCapability.writingModels(from: found).count
-                notes.append("\(vendor.displayName): \(count == 0 ? "no matching writing models" : "\(count) writing models").")
+                let count = ModelCapability.writingModels(from: found).count, more = ModelCapability.otherWritingModels(from: found).count
+                notes.append("\(vendor.displayName): \(count + more == 0 ? "no matching writing models" : "\(count) recommended, \(more) more").")
             } catch { notes.append("\(vendor.displayName): \(ProviderError.message(for: error, vendor: vendor))") }
         }
         availableModels = models

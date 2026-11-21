@@ -2,12 +2,14 @@ import SwiftUI
 import ClearlineCore
 
 /// One menu for every connected vendor, grouped by vendor. Choosing a model also
-/// chooses its vendor, so there is no separate vendor control.
+/// chooses its vendor, so there is no separate vendor control. Each vendor shows its
+/// curated models first, then every other live-discovered text model.
 struct WritingModelPicker: View {
     let available: [ModelCapability]
     @Binding var selection: String
 
     private var models: [ModelCapability] { ModelCapability.writingModels(from: available) }
+    private var others: [ModelCapability] { ModelCapability.otherWritingModels(from: available) }
 
     var body: some View {
         Picker("Model", selection: $selection) {
@@ -18,9 +20,15 @@ struct WritingModelPicker: View {
                         ForEach(group) { Text($0.displayName).tag($0.id) }
                     }
                 }
+                let more = others.filter { $0.vendor == vendor }
+                if !more.isEmpty {
+                    Section("More \(vendor.displayName) models · default reasoning") {
+                        ForEach(more) { Text($0.displayName).tag($0.id) }
+                    }
+                }
             }
-            if !models.contains(where: { $0.id == selection }) {
-                if !models.isEmpty { Divider() }
+            if !(models + others).contains(where: { $0.id == selection }) {
+                if !models.isEmpty || !others.isEmpty { Divider() }
                 Text("\(ModelCapability.capability(for: selection).displayName) · \(available.contains { $0.id == selection } ? "saved model" : "unavailable")")
                     .tag(selection)
             }
