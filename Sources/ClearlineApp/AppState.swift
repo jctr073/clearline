@@ -32,8 +32,10 @@ final class AppState: ObservableObject {
     }
     @Published var aiSession: AISession?
     @Published var availableModels: [ModelCapability] = []
-    @Published var modelStatus = "Connect OpenAI to load available models."
-    @Published var hasKey = false
+    @Published var modelStatus = "Connect OpenAI or Gemini to load available models."
+    /// Vendors with a key stored in the Keychain.
+    @Published var vendorKeys: Set<AIVendor> = []
+    var hasKey: Bool { !vendorKeys.isEmpty }
     @Published var apiUsage = UsageLedger()
     @Published var usageError: String?
     @Published var usageLoaded = false
@@ -75,12 +77,12 @@ final class AppState: ObservableObject {
             library = loaded.0
             preferences = try await store.loadPreferences()
             if library.documents.isEmpty {
-                let welcome = WritingDocument(title: "A little more clarity", text: "Good writing starts with a little space.\n\nThis is your place to think, draft, and find the right words. Clearline keeps your documents on this Mac and gives you useful feedback as you write.\n\nTry it for yourself\n\nIn order to make this introduction more concise, we can remove a few unnecessary words. There are  two spaces here, and this sentence has a mispelled word.\n\nYour words, your call\n\nReview a suggestion on the right. Accept what helps and dismiss what doesn't. Every change is yours to make—and yours to undo.\n\nWhen you're ready, connect OpenAI in Settings for rewrites, new drafts, and a fresh perspective.")
+                let welcome = WritingDocument(title: "A little more clarity", text: "Good writing starts with a little space.\n\nThis is your place to think, draft, and find the right words. Clearline keeps your documents on this Mac and gives you useful feedback as you write.\n\nTry it for yourself\n\nIn order to make this introduction more concise, we can remove a few unnecessary words. There are  two spaces here, and this sentence has a mispelled word.\n\nYour words, your call\n\nReview a suggestion on the right. Accept what helps and dismiss what doesn't. Every change is yours to make—and yours to undo.\n\nWhen you're ready, connect OpenAI or Gemini in Settings for rewrites, new drafts, and a fresh perspective.")
                 library.documents = [welcome]; library.selectedID = welcome.id
             }
             if current == nil { library.selectedID = library.documents.first?.id }
             ready = true; saveStatus = loaded.recovered ? "Recovered from backup" : "Saved on this Mac"
-            hasKey = (try? KeychainCredential.read()) != nil
+            vendorKeys = Set(AIVendor.allCases.filter { (try? KeychainCredential.read($0)) != nil })
             crossApp = CrossAppController(state: self)
             crossApp?.configure()
             scheduleAnalysis(); scheduleSave()

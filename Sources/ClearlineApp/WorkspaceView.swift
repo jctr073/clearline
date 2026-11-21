@@ -161,7 +161,7 @@ struct WorkspaceView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack { Image(systemName: state.paused ? "pause.circle" : state.status.contains("Checking") ? "arrow.triangle.2.circlepath" : "checkmark.circle").foregroundStyle(Palette.teal); Text(state.status).font(.system(size: 11, weight: .medium)); Spacer(); Text(state.status.contains("OpenAI") ? "OPENAI CLOUD" : "ON DEVICE").font(.system(size: 8, weight: .semibold)).tracking(1).foregroundStyle(.secondary) }
+                        HStack { Image(systemName: state.paused ? "pause.circle" : state.status.contains("Checking") ? "arrow.triangle.2.circlepath" : "checkmark.circle").foregroundStyle(Palette.teal); Text(state.status).font(.system(size: 11, weight: .medium)); Spacer(); Text(AIVendor.allCases.first { state.status.contains($0.cloudLabel) }?.cloudLabel.uppercased() ?? "ON DEVICE").font(.system(size: 8, weight: .semibold)).tracking(1).foregroundStyle(.secondary) }
                         Text(state.suggestions.isEmpty ? "Write freely. Suggestions will appear here as you go." : "\(state.suggestions.count) \(state.suggestions.count == 1 ? "thing" : "things") to consider. You have the final say.").font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(4)
                     }.padding(.top, 24)
                     HStack {
@@ -186,7 +186,7 @@ struct WorkspaceView: View {
                         HStack { Image(systemName: "sparkles"); Text("A fresh perspective").fontWeight(.semibold) }.font(.system(size: 12))
                         Text("Find another way to say it, or start with a first draft.").font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(3)
                         Button { state.startAI() } label: { HStack { Text(state.selection.length > 0 ? "Rewrite selection" : "Explore writing tools"); Spacer(); Image(systemName: "arrow.up.right") }.font(.system(size: 11, weight: .medium)).padding(11).background(Palette.teal, in: RoundedRectangle(cornerRadius: 7)).foregroundStyle(Palette.onAccent) }.buttonStyle(.plain).disabled(state.current == nil)
-                        Text(state.hasKey ? "OpenAI cloud · review before applying" : "Optional · connect OpenAI in Settings").font(.system(size: 9)).foregroundStyle(.secondary)
+                        Text(state.hasKey ? "\(AIVendor.serving(state.preferences.model).cloudLabel) · review before applying" : "Optional · connect OpenAI or Gemini in Settings").font(.system(size: 9)).foregroundStyle(.secondary)
                     }.padding(16).background(Palette.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 7) {
                         HStack { Text("WRITING GOALS").font(.system(size: 8, weight: .semibold)).tracking(1.4); Spacer(); Button("Edit") { state.showSettings = true }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.teal) }

@@ -48,8 +48,9 @@ final class AISession: ObservableObject, Identifiable {
             guard state.availableModels.contains(where: { $0.id == model }) else { throw ProviderError.unavailableModel }
             let config = try RequestConfiguration(model: model, effort: effort, maxOutputTokens: state.preferences.maxOutputTokens, timeout: state.preferences.timeoutSeconds)
             let request = WritingRequest(action: capturedAction, text: original, instructions: instructions, previous: previous, preferences: state.preferences, configuration: config)
-            let provider = try state.makeProvider()
-            effective = "\(config.model) · \(config.effort ?? "API-default reasoning") · OpenAI cloud"
+            let vendor = AIVendor.serving(config.model)
+            let provider = try state.makeProvider(model: config.model)
+            effective = "\(config.model) · \(config.effort ?? "API-default reasoning") · \(vendor.cloudLabel)"
             running = true
             task = Task {
                 do {
@@ -67,9 +68,9 @@ final class AISession: ObservableObject, Identifiable {
                     running = false
                     if let documentID { stale = state.current?.id != documentID || state.current?.revision != revision }
                 } catch is CancellationError { if generation == operation { running = false } }
-                catch { if generation == operation { self.error = error.localizedDescription; running = false } }
+                catch { if generation == operation { self.error = ProviderError.message(for: error, vendor: vendor); running = false } }
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = ProviderError.message(for: error, vendor: AIVendor.serving(model)) }
     }
     private func receiveProgress(_ count: Int, operation: UUID) { if generation == operation { received = count } }
     var isReadOnlyCapture: Bool { external?.canReplace == false }
@@ -141,23 +142,39 @@ extension AppState {
         preferences.showWritingChanges = show
         preferencesChanged(reanalyze: false)
     }
-    func makeProvider() throws -> any WritingProvider {
-        guard let key = try KeychainCredential.read() else { throw ProviderError.missingKey }
+    /// Routes a request to the vendor that serves `model`, using that vendor's key.
+    func makeProvider(model: String) throws -> any WritingProvider {
+        let vendor = AIVendor.serving(model)
+        guard let key = try KeychainCredential.read(vendor) else { throw ProviderError.missingKey }
         let report: @Sendable (String, TokenUsage) async -> Void = { [weak self] model, usage in
             await self?.recordUsage(model: model, usage: usage)
         }
-        if preferences.useAgentService { return AgentProcessProvider(key: key, onUsage: report) }
-        return OpenAIProvider(key: key, onUsage: report)
+        switch vendor {
+        case .gemini: return GeminiProvider(key: key, onUsage: report)
+        case .openAI:
+            // The Agents SDK runtime is OpenAI-only.
+            if preferences.useAgentService { return AgentProcessProvider(key: key, onUsage: report) }
+            return OpenAIProvider(key: key, onUsage: report)
+        }
     }
+    /// Loads models from every vendor with a key. One vendor failing keeps the other's models.
     func refreshModels() async {
-        do {
-            guard let key = try KeychainCredential.read() else { hasKey = false; availableModels = []; throw ProviderError.missingKey }
-            hasKey = true; modelStatus = "Loading available models…"
-            availableModels = try await OpenAIProvider(key: key).models()
-            let count = ModelCapability.writingModels(from: availableModels).count
-            modelStatus = count == 0 ? "No matching writing models available." : "\(count) writing models available."
-            if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
-        } catch { availableModels = []; modelStatus = error.localizedDescription }
+        vendorKeys = Set(AIVendor.allCases.filter { (try? KeychainCredential.read($0)) != nil })
+        guard hasKey else { availableModels = []; modelStatus = "Connect OpenAI or Gemini to load available models."; return }
+        modelStatus = "Loading available models…"
+        var models: [ModelCapability] = [], notes: [String] = []
+        for vendor in AIVendor.allCases where vendorKeys.contains(vendor) {
+            do {
+                guard let key = try KeychainCredential.read(vendor) else { continue }
+                let found = vendor == .gemini ? try await GeminiProvider(key: key).models() : try await OpenAIProvider(key: key).models()
+                models += found
+                let count = ModelCapability.writingModels(from: found).count
+                notes.append("\(vendor.displayName): \(count == 0 ? "no matching writing models" : "\(count) writing models").")
+            } catch { notes.append("\(vendor.displayName): \(ProviderError.message(for: error, vendor: vendor))") }
+        }
+        availableModels = models
+        modelStatus = notes.joined(separator: " ")
+        if !availableModels.contains(where: { $0.id == preferences.model }) { modelStatus += " Choose an available model; your saved choice has not been changed." }
     }
     func startAI(_ action: WritingAction? = nil, wholeDocument: Bool = false, paragraph: Bool = false) {
         guard let session = makeWritingSession(action, selection: selection, wholeDocument: wholeDocument, paragraph: paragraph) else { return }
@@ -178,14 +195,14 @@ extension AppState {
             guard availableModels.contains(where: { $0.id == preferences.model }) else { return }
             let configuration = try RequestConfiguration(model: preferences.model, effort: preferences.effort, maxOutputTokens: preferences.maxOutputTokens, timeout: preferences.timeoutSeconds)
             let request = WritingRequest(action: .analyze, text: document.text, instructions: "Offer only clear, useful improvements.", preferences: preferences, configuration: configuration)
-            status = "Checking · OpenAI cloud"
-            let result = try await makeProvider().perform(request) { _ in }
+            status = "Checking · \(AIVendor.serving(configuration.model).cloudLabel)"
+            let result = try await makeProvider(model: configuration.model).perform(request) { _ in }
             try Task.checkCancellation()
             guard current?.id == document.id, current?.revision == document.revision, !paused else { return }
             let proposals = try result.suggestions(for: document).filter { issue in
                 !LocalRules.protectedRanges(document.text, preferences: preferences).contains { NSIntersectionRange($0, issue.range.nsRange).length > 0 }
             }
             suggestions = EditEngine.resolve(suggestions + proposals, in: document); status = "Ready"
-        } catch is CancellationError {} catch { status = "Cloud unavailable"; self.error = error.localizedDescription }
+        } catch is CancellationError {} catch { status = "Cloud unavailable"; self.error = ProviderError.message(for: error, vendor: AIVendor.serving(preferences.model)) }
     }
 }

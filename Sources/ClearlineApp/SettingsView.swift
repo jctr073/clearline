@@ -7,14 +7,14 @@ struct SettingsView: View {
     @ObservedObject var state: AppState
     @Environment(\.dismiss) var dismiss
     @State private var tab = "Writing"
-    @State private var key = ""
+    @State private var keys: [AIVendor: String] = [:]
     @State private var word = ""
     @State private var discouraged = ""
     @State private var preferred = ""
     @State private var message = ""
     @State private var voiceTask: Task<Void, Never>?
     @State private var describingVoice = false
-    private let tabs = ["Writing", "OpenAI", "Dictionary", "Cross-app", "Privacy", "Languages"]
+    private let tabs = ["Writing", "AI Providers", "Dictionary", "Cross-app", "Privacy", "Languages"]
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text("\(Brand.name) settings").font(.system(size: 23, weight: .medium, design: .serif)); Spacer(); Button("Done") { state.showSettings = false; dismiss() }.keyboardShortcut(.defaultAction) }.padding(24)
@@ -23,7 +23,7 @@ struct SettingsView: View {
             ScrollView {
                 Form {
                     switch tab {
-                    case "OpenAI": openAI
+                    case "AI Providers": providers
                     case "Dictionary": dictionary
                     case "Cross-app": crossApp
                     case "Privacy": privacy
@@ -72,19 +72,13 @@ struct SettingsView: View {
             }
         }
     }
-    private var openAI: some View {
+    private var providers: some View {
         Group {
             Section("Optional cloud writing tools") {
-                Text("Your documents remain local. When you request an AI operation, Clearline sends the selected text, your instructions, and writing goals to OpenAI. Regeneration includes the prior proposal. No clipboard or background-app content is sent automatically.").font(.callout)
-                Link("Review OpenAI API data controls", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                SecureField("OpenAI API key", text: $key)
-                HStack {
-                    Button("Save to Keychain") { configureKey { try KeychainCredential.save(key) }; key = "" }.disabled(key.isEmpty)
-                    Button("Import from ~/.zshrc") { configureKey { try KeychainCredential.importShellAssignment() } }
-                    Button("Remove key", role: .destructive) { do { try KeychainCredential.delete(); state.hasKey = false; state.availableModels = []; state.preferences.cloudAutomatic = false; message = "OpenAI key removed from Keychain." } catch { message = error.localizedDescription } }
-                }
-                Text("Import reads a literal key assignment without running your shell configuration. Credentials are stored in this Mac's Keychain, never in documents or preferences.").font(.caption).foregroundStyle(.secondary)
+                Text("Your documents remain local. When you request an AI operation, Clearline sends the selected text, your instructions, and writing goals to the provider of the model you chose. Regeneration includes the prior proposal. No clipboard or background-app content is sent automatically.").font(.callout)
+                Text("Connect one or both providers. Their models appear together in the model menu.").font(.caption).foregroundStyle(.secondary)
             }
+            ForEach(AIVendor.allCases) { vendor in providerSection(vendor) }
             Section("Model defaults") {
                 WritingModelPicker(available: state.availableModels, selection: Binding(get: { state.preferences.model }, set: { new in
                     state.preferences.model = new
@@ -96,7 +90,7 @@ struct SettingsView: View {
                 }))
                 ReasoningEffortPicker(model: state.preferences.model, selection: $state.preferences.effort)
                 Text("Higher reasoning effort may increase response time and cost. Each operation captures its settings when sent.").font(.caption).foregroundStyle(.secondary)
-                Text("Shows the latest main writing models available to your account.").font(.caption).foregroundStyle(.secondary)
+                Text("Shows the latest main writing models available to your connected accounts.").font(.caption).foregroundStyle(.secondary)
                 HStack { Text(state.modelStatus).font(.caption); Spacer(); Button("Refresh models") { Task { await state.refreshModels() } }.disabled(!state.hasKey) }
             }
             UsageSettingsView(state: state)
@@ -104,16 +98,40 @@ struct SettingsView: View {
                 Stepper("Input limit: \(state.preferences.maxInputCharacters) characters", value: $state.preferences.maxInputCharacters, in: 2000...60000, step: 2000)
                 Stepper("Output limit: \(state.preferences.maxOutputTokens) tokens", value: $state.preferences.maxOutputTokens, in: 1024...16384, step: 1024)
                 Stepper("Timeout: \(state.preferences.timeoutSeconds) seconds", value: $state.preferences.timeoutSeconds, in: 15...300, step: 15)
-                Toggle("Continuously check this editor with OpenAI", isOn: $state.preferences.cloudAutomatic).disabled(!state.hasKey)
+                Toggle("Continuously check this editor with the selected model", isOn: $state.preferences.cloudAutomatic).disabled(!state.hasKey)
                 Text("Off by default. When enabled, document text is sent after typing pauses. Each request is bounded by your input limit. Cross-app text is never included.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Use local OpenAI Agents SDK runtime", isOn: $state.preferences.useAgentService)
-                Text("Requires the separately installed Python environment described in README. With this off, the Swift client uses OpenAI's Responses API directly. Both use the same structured proposal format.").font(.caption).foregroundStyle(.secondary)
+                Text("Requires the separately installed Python environment described in README. With this off, the Swift client uses OpenAI's Responses API directly. Both use the same structured proposal format. Gemini models always use the native Swift client.").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
-    private func configureKey(_ action: () throws -> Void) {
-        do { try action(); state.hasKey = true; message = "Credential stored in Keychain."; Task { await state.refreshModels() } }
+    @ViewBuilder private func providerSection(_ vendor: AIVendor) -> some View {
+        Section(vendor.displayName + (state.vendorKeys.contains(vendor) ? " · connected" : "")) {
+            Link("Review \(vendor.displayName) API data terms", destination: vendor.dataPolicyURL)
+            if vendor == .gemini {
+                Text("On Gemini's free tier, Google may use prompts and responses to improve its products. Use a paid (billing-enabled) key for private writing.").font(.caption).foregroundStyle(.secondary)
+            }
+            SecureField("\(vendor.displayName) API key", text: Binding(get: { keys[vendor] ?? "" }, set: { keys[vendor] = $0 }))
+            HStack {
+                Button("Save to Keychain") { configureKey(vendor) { try KeychainCredential.save(keys[vendor] ?? "", for: vendor) }; keys[vendor] = "" }.disabled((keys[vendor] ?? "").isEmpty)
+                Button("Import from ~/.zshrc") { configureKey(vendor) { try KeychainCredential.importShellAssignment(for: vendor) } }
+                Button("Remove key", role: .destructive) { removeKey(vendor) }.disabled(!state.vendorKeys.contains(vendor))
+            }
+            Text("Import reads a literal \(vendor.shellVariables.joined(separator: " or ")) assignment without running your shell configuration. Credentials are stored in this Mac's Keychain, never in documents or preferences.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+    private func configureKey(_ vendor: AIVendor, _ action: () throws -> Void) {
+        do { try action(); state.vendorKeys.insert(vendor); message = "\(vendor.displayName) credential stored in Keychain."; Task { await state.refreshModels() } }
         catch { message = error.localizedDescription }
+    }
+    private func removeKey(_ vendor: AIVendor) {
+        do {
+            try KeychainCredential.delete(vendor)
+            state.vendorKeys.remove(vendor)
+            state.availableModels.removeAll { $0.vendor == vendor }
+            if !state.hasKey { state.preferences.cloudAutomatic = false }
+            message = "\(vendor.displayName) key removed from Keychain."
+        } catch { message = error.localizedDescription }
     }
     private var dictionary: some View {
         Group {
@@ -127,9 +145,9 @@ struct SettingsView: View {
                 ForEach(state.preferences.preferredTerms.keys.sorted(), id: \.self) { term in HStack { Text("\(term) → \(state.preferences.preferredTerms[term] ?? "")"); Spacer(); Button("Remove") { state.preferences.preferredTerms.removeValue(forKey: term) }.buttonStyle(.borderless) } }
             }
             Section("Personal voice · explicit samples only") {
-                Text("Paste writing you want Clearline to learn from. ‘Describe voice’ sends only these samples and your goals to OpenAI. The generated description is editable; enabling it sends that description with later writing requests.").font(.caption).foregroundStyle(.secondary)
+                Text("Paste writing you want Clearline to learn from. ‘Describe voice’ sends only these samples and your goals to the selected model's provider. The generated description is editable; enabling it sends that description with later writing requests.").font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $state.preferences.voiceSamples).frame(height: 100).overlay(RoundedRectangle(cornerRadius: 4).stroke(.quaternary)).accessibilityLabel("Writing samples")
-                HStack { Button(describingVoice ? "Describing…" : "Describe voice with OpenAI") { describeVoice() }.disabled(describingVoice || !state.hasKey || state.preferences.voiceSamples.isEmpty); if describingVoice { Button("Cancel") { voiceTask?.cancel(); describingVoice = false } } }
+                HStack { Button(describingVoice ? "Describing…" : "Describe voice with \(AIVendor.serving(state.preferences.model).displayName)") { describeVoice() }.disabled(describingVoice || !state.hasKey || state.preferences.voiceSamples.isEmpty); if describingVoice { Button("Cancel") { voiceTask?.cancel(); describingVoice = false } } }
                 TextField("Editable voice description", text: $state.preferences.voiceProfile, axis: .vertical).lineLimit(3...8)
                 Toggle("Use this voice description", isOn: $state.preferences.voiceEnabled)
                 Button("Delete samples and voice description", role: .destructive) { voiceTask?.cancel(); describingVoice = false; state.preferences.voiceSamples = ""; state.preferences.voiceProfile = ""; state.preferences.voiceEnabled = false }
@@ -143,11 +161,11 @@ struct SettingsView: View {
             do {
                 let config = try RequestConfiguration(model: state.preferences.model, effort: state.preferences.effort, maxOutputTokens: state.preferences.maxOutputTokens, timeout: state.preferences.timeoutSeconds)
                 let request = WritingRequest(action: .voice, text: samples, instructions: "Describe only the demonstrated writing style; do not infer personal traits.", preferences: state.preferences, configuration: config)
-                let result = try await state.makeProvider().perform(request) { _ in }
+                let result = try await state.makeProvider(model: config.model).perform(request) { _ in }
                 try Task.checkCancellation()
                 guard samples == state.preferences.voiceSamples else { describingVoice = false; return }
                 state.preferences.voiceProfile = result.explanation; describingVoice = false
-            } catch is CancellationError { describingVoice = false } catch { message = error.localizedDescription; describingVoice = false }
+            } catch is CancellationError { describingVoice = false } catch { message = ProviderError.message(for: error, vendor: AIVendor.serving(state.preferences.model)); describingVoice = false }
         }
     }
     private var crossApp: some View {
@@ -180,11 +198,11 @@ struct SettingsView: View {
     private var languages: some View {
         Group {
             Section("Capability matrix") {
-                Text("English is the primary test language. macOS spelling availability is detected from NSSpellChecker. Apple does not expose a definitive grammar capability list: grammar findings depend on the installed engine. Rewriting and translation require OpenAI and are not certified equally across languages.").font(.callout)
+                Text("English is the primary test language. macOS spelling availability is detected from NSSpellChecker. Apple does not expose a definitive grammar capability list: grammar findings depend on the installed engine. Rewriting and translation require a cloud provider and are not certified equally across languages.").font(.callout)
                 ForEach(["en_US", "en_GB", "fr", "de", "es", "ja", "ar"], id: \.self) { language in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(Locale.current.localizedString(forIdentifier: language) ?? language).fontWeight(.medium)
-                        Text("Spelling: \((state.spelling.engineLanguage(language) != nil) ? "available on this Mac" : "not listed by this Mac") · Grammar: engine-dependent\nEnglish style rules: \(language.hasPrefix("en") ? "enabled" : "unavailable") · OpenAI rewrite / tone / translation: provider-dependent, \(language.hasPrefix("en") ? "primary test language" : "not verified")").font(.caption).foregroundStyle(.secondary)
+                        Text("Spelling: \((state.spelling.engineLanguage(language) != nil) ? "available on this Mac" : "not listed by this Mac") · Grammar: engine-dependent\nEnglish style rules: \(language.hasPrefix("en") ? "enabled" : "unavailable") · Cloud rewrite / tone / translation: provider-dependent, \(language.hasPrefix("en") ? "primary test language" : "not verified")").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Text("Detected document language: \(NativeSpelling.detectedLanguage(state.current?.text ?? "") ?? "not enough text")").font(.caption)
@@ -202,7 +220,7 @@ struct OnboardingView: View {
             Text(Brand.tagline).font(.system(size: 36, weight: .medium, design: .serif))
             Text("Welcome to \(Brand.name). A calm place to write, with a thoughtful second look when you need one.").font(.system(size: 15)).foregroundStyle(.secondary).lineSpacing(5)
             row("doc.text", "Start with your words", "Write, paste, or import a document. Spelling and local style checks work without an account or network connection.")
-            row("sparkles", "Choose when to use the cloud", "Connect your own OpenAI key for rewrites, drafts, summaries, and tone feedback. Review each proposal before accepting it.")
+            row("sparkles", "Choose when to use the cloud", "Connect your own OpenAI or Gemini key for rewrites, drafts, summaries, and tone feedback. Review each proposal before accepting it.")
             row("rectangle.on.rectangle", "Take a second look in other apps", "Optional selected-text assistance uses Accessibility permission. Enable it later in Settings; your editor works without it.")
             HStack { Text("Local by default. Always your decision.").font(.caption).foregroundStyle(.secondary); Spacer(); Button("Start writing") { UserDefaults.standard.set(true, forKey: "onboarded"); state.showOnboarding = false }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction) }
         }.padding(40).frame(width: 610).tint(Palette.teal)
