@@ -52,7 +52,7 @@ final class AISession: ObservableObject, Identifiable {
             let provider = try state.makeProvider(model: config.model)
             effective = "\(config.model) · \(config.effort ?? "API-default reasoning") · \(vendor.cloudLabel)"
             running = true
-            task = Task {
+            task = Task { [self] in
                 do {
                     let result = try await provider.perform(request) { [weak self] count in await self?.receiveProgress(count, operation: operation) }
                     try Task.checkCancellation()
