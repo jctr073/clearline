@@ -33,7 +33,7 @@ IME marked text suspends analysis and clears highlights until composition commit
 
 JSON was chosen over SwiftData for transparent backup/recovery and deterministic testing without persistent-store tooling. It is appropriate for an initial local library; whole-library serialization and 50 full snapshots per document are a scaling limitation. Future work should move large libraries to a transactional store without changing document IDs or revision semantics. Time Machine/manual backups are independent of app deletion.
 
-## OpenAI
+## Cloud providers
 
 `WritingProvider` has a single asynchronous operation returning a strict `WritingResult`. Tests inject a URLProtocol transport and fixtures only inside the XCTest target. No fake provider is reachable from production controls.
 
@@ -42,6 +42,8 @@ The Swift provider uses `/v1/responses`, strict `text.format` JSON Schema, `stor
 Model IDs are discovered directly from `/v1/models` without an allowlist or HTTP cache. The curated capability catalog only supplies known reasoning settings. Unknown IDs remain selectable, labeled unverified for writing, and omit reasoning in both providers. The Models endpoint does not declare endpoint, structured-output, or reasoning compatibility; discovery is not a capability test, and no generation probes run during refresh. A failed refresh clears the available list. The request constructor independently rejects unsupported effort values. An immutable configuration snapshot prevents picker changes from changing an in-flight request. Model switching is never an error fallback.
 
 The streaming parser ignores progress/tool-like events except text-progress counts and the completed response. It requires a completed, non-refused, bounded response and well-formed structured output. Invalid ranges or overlaps reject the entire analysis proposal. Cancellation and failure do not call the edit layer. Transient server/rate-limit retries are bounded at two, with capped backoff. Network errors are presented without echoing provider response bodies.
+
+`GeminiProvider` implements the same protocol against the Gemini API's `streamGenerateContent` (SSE). `WritingPrompt` holds the provider-neutral instructions, input encoding, and payload validation shared by both wire formats; `WritingResult` parsing is shared too. `AIVendor` is derived from the model ID prefix, so preferences store only a model ID and the app routes each request to that vendor's Keychain key. Thought parts are excluded from the proposal; usage is taken from the last cumulative `usageMetadata` and recorded only for terminal responses. Gemini reports an invalid key as HTTP 400 `API_KEY_INVALID`, which maps to an authentication error without exposing the body. Model IDs are character-checked before becoming a URL path segment.
 
 The optional SDK boundary is a per-operation Python child. It uses official `Agent`, `Runner`, `OpenAIResponsesModel`, typed Pydantic output, no tools, one turn, bounded SDK retries/timeouts, and disabled tracing. A private pipe avoids a localhost credential listener. Credentials are neither command arguments nor child environment variables; stdin carries them in memory. The child has no persistent conversation state. The release installer must install/manage its own supported Python environment; the native provider requires none.
 

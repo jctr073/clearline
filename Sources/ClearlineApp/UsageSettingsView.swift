@@ -56,7 +56,9 @@ struct UsageSettingsView: View {
             Text("Counts use usage reported by the native client and Agents SDK across all keys used on this Mac. Earlier usage and requests interrupted before usage arrives may be missing. These are local totals, not account billing or remaining credit.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Link("Open OpenAI usage dashboard", destination: URL(string: "https://platform.openai.com/usage")!)
+                ForEach(AIVendor.allCases.filter { state.vendorKeys.contains($0) }) { vendor in
+                    Link("\(vendor.displayName) usage", destination: vendor.usageDashboardURL)
+                }
                 Spacer()
                 Button("Reset local stats", role: .destructive) { Task { await state.resetUsage() } }
             }

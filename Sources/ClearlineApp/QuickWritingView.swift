@@ -95,7 +95,7 @@ struct QuickWritingView: View {
             if stale { Label("The document changed. Start again from the right-click menu.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
             if let error = session.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if !state.hasKey {
-                Button("Connect OpenAI in Settings") { close(); state.showSettings = true }
+                Button("Connect OpenAI or Gemini in Settings") { close(); state.showSettings = true }
             } else if !modelAvailable {
                 Button("Choose an available model in Settings") { close(); state.showSettings = true }
             }
@@ -107,7 +107,7 @@ struct QuickWritingView: View {
         if !quickEdit || showsToggle {
             HStack {
                 if !quickEdit {
-                    Text("\(session.model) · \(session.effort.isEmpty ? "Default reasoning" : session.effort) · OpenAI cloud")
+                    Text("\(session.model) · \(session.effort.isEmpty ? "Default reasoning" : session.effort) · \(AIVendor.serving(session.model).cloudLabel)")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()

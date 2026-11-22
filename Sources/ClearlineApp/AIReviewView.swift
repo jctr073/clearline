@@ -30,11 +30,11 @@ struct AIReviewView: View {
                     if !session.selectionNotice.isEmpty { Text(session.selectionNotice).font(.caption).foregroundStyle(.secondary) }
                     TextField(session.action == .translate ? "Target language (required), e.g. Spanish" : "Add instructions, notes, or a follow-up…", text: $session.instructions, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder).disabled(session.running)
                     if session.result == nil {
-                        Label("OpenAI cloud", systemImage: "cloud").font(.system(size: 11, weight: .semibold))
-                        Text("Send only the text shown below, these instructions, and your writing goals. If you regenerate, the previous proposal is also sent. Your original stays unchanged until you accept. Provider data handling is governed by your OpenAI account terms.").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Label(AIVendor.serving(session.model).cloudLabel, systemImage: "cloud").font(.system(size: 11, weight: .semibold))
+                        Text("Send only the text shown below, these instructions, and your writing goals. If you regenerate, the previous proposal is also sent. Your original stays unchanged until you accept. Provider data handling is governed by your \(AIVendor.serving(session.model).displayName) account terms.").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     if !state.hasKey {
-                        HStack { Text("Connect an OpenAI key to use these tools."); Spacer(); Button("Open Settings") { close(); state.showSettings = true } }.font(.caption).padding(12).background(Palette.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                        HStack { Text("Connect an OpenAI or Gemini key to use these tools."); Spacer(); Button("Open Settings") { close(); state.showSettings = true } }.font(.caption).padding(12).background(Palette.teal.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
                     }
                     if session.documentID != nil && state.current?.format == .rtf {
                         Label("A rewrite may flatten formatting inside the selected passage. Formatting outside it is preserved.", systemImage: "textformat").font(.caption).foregroundStyle(.secondary)
@@ -73,7 +73,7 @@ struct AIReviewView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
-                Text(session.running ? session.effective : "\(session.model) · \(session.effort.isEmpty ? "API-default reasoning" : session.effort) · OpenAI cloud").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(session.running ? session.effective : "\(session.model) · \(session.effort.isEmpty ? "API-default reasoning" : session.effort) · \(AIVendor.serving(session.model).cloudLabel)").font(.system(size: 10)).foregroundStyle(.secondary)
                 HStack {
                     if session.running {
                         ProgressView().controlSize(.small); Text(session.received > 0 ? "Receiving proposal… \(session.received) characters" : "Thinking…").font(.caption)
